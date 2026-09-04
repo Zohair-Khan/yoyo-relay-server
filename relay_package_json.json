@@ -1,0 +1,15 @@
+{
+  "name": "yoyo-relay-server",
+  "version": "1.0.0",
+  "description": "Low-latency WebSocket relay for Yoyo Judge Scoring app",
+  "main": "relay-server.js",
+  "scripts": {
+    "start": "node relay-server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
