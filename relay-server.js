@@ -105,17 +105,25 @@ wss.on('connection', (ws, req) => {
 
     // After identification: pure pass-through, no parsing/re-serializing.
     // Client (Android app) -> Bridge (PC), or Bridge -> all Clients.
+    //
+    // Force forwarding as text (not binary). Our whole protocol is JSON text,
+    // but Node's ws library can deliver "data" as a raw Buffer, and re-sending
+    // a Buffer directly makes the outgoing frame binary. Binary frames show up
+    // as an opaque Blob on browser WebSocket clients instead of readable text,
+    // so we explicitly convert to a string before forwarding.
+    const text = data.toString();
+
     const room = rooms.get(roomId);
     if (!room) return;
 
     if (role === 'client') {
       if (room.bridge && room.bridge.readyState === WebSocket.OPEN) {
-        room.bridge.send(data);
+        room.bridge.send(text);
       }
     } else if (role === 'bridge') {
       for (const client of room.clients) {
         if (client.readyState === WebSocket.OPEN) {
-          client.send(data);
+          client.send(text);
         }
       }
     }
