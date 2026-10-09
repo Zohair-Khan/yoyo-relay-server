@@ -134,7 +134,11 @@
     if (!timer) timer = setInterval(function () { if (!document.hidden) refresh(); }, 2000);
   }
 
+  var refreshing = false;
   function refresh() {
+    // Never poll without a password (it would count as a failed login), and never overlap requests.
+    if (!password || refreshing) return Promise.resolve();
+    refreshing = true;
     return api('GET', '/events').then(function (data) {
       if (!judgeOptionsBuilt) {
         var sel = $('newJudges');
@@ -154,7 +158,7 @@
       } else {
         $('updated').textContent = 'Connection problem: ' + err.message;
       }
-    });
+    }).then(function () { refreshing = false; });
   }
 
   function fmtScore(n, plus) { return (n < 0 ? (plus ? '-' : '+') : (plus ? '+' : '-')) + String(Math.abs(n)).padStart(3, '0'); }

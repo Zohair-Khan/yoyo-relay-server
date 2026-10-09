@@ -47,7 +47,7 @@ const MAX_SCORE = 999;
 const TICK_MS = 3000;   // app-level heartbeat so browsers can detect dead connections
 const PING_MS = 15000;  // protocol-level ping so the server can drop dead sockets
 const FAIL_WINDOW_MS = 10 * 60 * 1000;
-const MAX_FAILS = 10;
+const MAX_FAILS = { admin: 10, ws: 30 }; // ws is higher: a whole venue shares one public IP
 const BLOCK_MS = 10 * 60 * 1000;
 
 const PAGES = { '/score': 'score.html', '/admin': 'admin.html' };
@@ -192,7 +192,9 @@ function kickEvent(ev, message) {
 }
 
 // ---------------------------------------------------------- abuse limiting
-const failures = new Map(); // ip -> { count, first, blockedUntil }
+// Admin-password failures and scoring-code failures are tracked separately,
+// so a mistyped judge code can never lock you out of /admin (and vice versa).
+const failures = new Map(); // 'kind:ip' -> { count, first, blockedUntil }
 
 function ipOf(req) {
   const xf = req.headers['x-forwarded-for'];
@@ -200,20 +202,26 @@ function ipOf(req) {
   return ip || '?';
 }
 
-function isBlocked(ip) {
-  const f = failures.get(ip);
+function isBlocked(ip, kind) {
+  const f = failures.get(kind + ':' + ip);
   return !!(f && f.blockedUntil > Date.now());
 }
 
-function recordFailure(ip) {
+function blockedMinutes(ip, kind) {
+  const f = failures.get(kind + ':' + ip);
+  return f ? Math.max(1, Math.ceil((f.blockedUntil - Date.now()) / 60000)) : 1;
+}
+
+function recordFailure(ip, kind) {
   const now = Date.now();
-  let f = failures.get(ip);
+  const key = kind + ':' + ip;
+  let f = failures.get(key);
   if (!f || now - f.first > FAIL_WINDOW_MS) {
     f = { count: 0, first: now, blockedUntil: 0 };
-    failures.set(ip, f);
+    failures.set(key, f);
   }
   f.count++;
-  if (f.count >= MAX_FAILS) f.blockedUntil = now + BLOCK_MS;
+  if (f.count >= MAX_FAILS[kind]) f.blockedUntil = now + BLOCK_MS;
 }
 
 function sha(s) {
@@ -331,11 +339,14 @@ async function handleApi(req, res, url) {
   if (!ADMIN_PASSWORD) {
     return json(res, 503, { error: 'Admin is disabled. Set the ADMIN_PASSWORD environment variable.' });
   }
-  if (isBlocked(ip)) return json(res, 429, { error: 'Too many failed attempts. Try again later.' });
+  if (isBlocked(ip, 'admin')) {
+    return json(res, 429, { error: 'Too many failed attempts. Try again in about ' + blockedMinutes(ip, 'admin') + ' minute(s).' });
+  }
   if (!adminOk(req)) {
-    recordFailure(ip);
+    recordFailure(ip, 'admin');
     return json(res, 401, { error: 'Wrong password.' });
   }
+  failures.delete('admin:' + ip); // a correct password clears earlier mistakes
 
   const p = url.pathname.replace(/^\/api\/admin/, '');
   const method = req.method;
@@ -508,7 +519,7 @@ function fail(ws, code, message, closeCode, fatal) {
 }
 
 function handleHello(ws, msg) {
-  if (isBlocked(ws.ip)) {
+  if (isBlocked(ws.ip, 'ws')) {
     return fail(ws, 'rate_limited', 'Too many failed attempts. Try again in a few minutes.', 4029, false);
   }
   let ev = null;
@@ -517,7 +528,7 @@ function handleHello(ws, msg) {
   else return fail(ws, 'bad_request', 'Unknown role.', 4000, true);
 
   if (!ev) {
-    recordFailure(ws.ip);
+    recordFailure(ws.ip, 'ws');
     return fail(ws, 'bad_code',
       msg.role === 'scorer' ? 'That code was not recognized.' : 'This overlay link is not valid.', 4003, true);
   }
@@ -623,9 +634,9 @@ function handleMessage(ws, msg) {
 
 // Legacy relay (old bridge.js / relay tester) -------------------------------
 function handleLegacyIdentify(ws, msg) {
-  if (isBlocked(ws.ip)) { ws.close(4029, 'Too many attempts'); return; }
+  if (isBlocked(ws.ip, 'ws')) { ws.close(4029, 'Too many attempts'); return; }
   if (!LEGACY_TOKEN || typeof msg.token !== 'string' || !safeEqual(msg.token, LEGACY_TOKEN)) {
-    recordFailure(ws.ip);
+    recordFailure(ws.ip, 'ws');
     ws.close(4001, 'Invalid token');
     return;
   }
@@ -731,8 +742,8 @@ setInterval(() => {
 
 setInterval(() => {
   const now = Date.now();
-  for (const [ip, f] of failures) {
-    if (now - f.first > FAIL_WINDOW_MS && f.blockedUntil < now) failures.delete(ip);
+  for (const [key, f] of failures) {
+    if (now - f.first > FAIL_WINDOW_MS && f.blockedUntil < now) failures.delete(key);
   }
 }, 10 * 60 * 1000);
 
