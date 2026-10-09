@@ -105,6 +105,7 @@
   var cards = {};      // id -> { root, refs }
   var timer = null;
   var judgeOptionsBuilt = false;
+  var maxJudges = 8;
 
   function api(method, path, body) {
     return fetch('/api/admin' + path, {
@@ -142,8 +143,6 @@
         judgeOptionsBuilt = true;
       }
       maxJudges = data.maxJudges;
-      if (false) {
-      }
       showMain();
       renderList(data.events);
       $('updated').textContent = 'Updated ' + new Date().toLocaleTimeString() + ' (refreshes every 2 seconds)';
