@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yoyo Scoring Overlay</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+  }
+  #bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    display: none;
+    box-sizing: border-box;
+    padding: 0.3em 0.6em;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.72);
+    font-family: 'Share Tech Mono', Consolas, 'Courier New', monospace;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  #grid {
+    display: grid;
+    width: max-content;
+    margin: 0 auto;
+    column-gap: 1.4em;
+    row-gap: 0.1em;
+    justify-items: start;
+  }
+  .cell { white-space: nowrap; }
+  .cell .name { opacity: 0.85; margin-right: 0.4em; }
+  #debug {
+    position: fixed;
+    top: 4px;
+    left: 4px;
+    display: none;
+    padding: 2px 6px;
+    font: 12px monospace;
+    color: #0f0;
+    background: rgba(0, 0, 0, 0.7);
+  }
+</style>
+</head>
+<body>
+<div id="bar"><div id="grid"></div></div>
+<div id="debug"></div>
+
+<script>
+/*
+ * Overlay for OBS Browser Source.
+ *   URL:  /overlay/<view key>
+ * Optional URL options (add after ?, join with &):
+ *   size=100        text size, percent (default 100)
+ *   pos=bottom      bottom (default) or top
+ *   font=Orbitron   any Google Font name (default Share Tech Mono)
+ *   bg=000000b8     background colour as hex (RRGGBB or RRGGBBAA), or "transparent"
+ *   color=ffffff    text colour as hex
+ *   avg=0           hide the AVG cell
+ *   label=0         hide the competitor label
+ *   debug=1         show connection status + grey background (for testing in a browser)
+ */
+(function () {
+  'use strict';
+
+  var q = new URLSearchParams(location.search);
+  var key = decodeURIComponent(location.pathname.replace(/^\/overlay\/?/, '')) || q.get('key') || '';
+
+  function cssColor(v, fallback) {
+    if (!v) return fallback;
+    if (/^[0-9a-fA-F]{3,8}$/.test(v)) return '#' + v;
+    if (/^(transparent|black|white)$/i.test(v)) return v;
+    return fallback;
+  }
+
+  var size = Math.min(300, Math.max(30, parseFloat(q.get('size')) || 100));
+  var atTop = q.get('pos') === 'top';
+  var showAvg = q.get('avg') !== '0';
+  var showLabel = q.get('label') !== '0';
+  var debug = q.get('debug') === '1';
+  var fontParam = q.get('font');
+  var fontName = fontParam && /^[A-Za-z0-9 ]{1,40}$/.test(fontParam) ? fontParam : 'Share Tech Mono';
+
+  var bar = document.getElementById('bar');
+  var grid = document.getElementById('grid');
+  var dbg = document.getElementById('debug');
+
+  bar.style.background = cssColor(q.get('bg'), 'rgba(0,0,0,0.72)');
+  bar.style.color = cssColor(q.get('color'), '#ffffff');
+  bar.style[atTop ? 'top' : 'bottom'] = '0';
+  bar.style.fontFamily = "'" + fontName + "', Consolas, 'Courier New', monospace";
+
+  var link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(fontName).replace(/%20/g, '+') + '&display=swap';
+  document.head.appendChild(link);
+
+  if (debug) {
+    document.body.style.background = '#2a2a2a';
+    dbg.style.display = 'block';
+  }
+  function setDebug(t) { if (debug) dbg.textContent = t; }
+
+  // ---- formatting (matches the MN State overlay: JDG1: +006 -000 ... AVG: +003.0 -000.0)
+  function pad3(n) { return String(Math.abs(Math.round(n))).padStart(3, '0'); }
+  function pad1(n) { return Math.abs(n).toFixed(1).padStart(5, '0'); }
+  function fmtPos(n) { return (n < 0 ? '-' : '+') + pad3(n); }
+  function fmtNeg(n) { return (n < 0 ? '+' : '-') + pad3(n); }
+  function fmtAvgPos(n) { return (n < 0 ? '-' : '+') + pad1(n); }
+  function fmtAvgNeg(n) { return (n < 0 ? '+' : '-') + pad1(n); }
+
+  function makeCell(name, parts) {
+    var d = document.createElement('div');
+    d.className = 'cell';
+    if (name) {
+      var s = document.createElement('span');
+      s.className = 'name';
+      s.textContent = name;
+      d.appendChild(s);
+    }
+    parts.forEach(function (t, i) {
+      if (i) d.appendChild(document.createTextNode(' '));
+      var sp = document.createElement('span');
+      sp.textContent = t;
+      d.appendChild(sp);
+    });
+    return d;
+  }
+
+  var state = null;
+
+  function render() {
+    if (!state) return;
+    var n = Object.keys(state.judges).length;
+    var cells = [];
+    var hasLabel = showLabel && !!state.label;
+    if (hasLabel) cells.push(makeCell(null, [state.label]));
+
+    var sumPos = 0;
+    var sumNeg = 0;
+    for (var i = 1; i <= n; i++) {
+      var j = state.judges[i] || { pos: 0, neg: 0 };
+      sumPos += j.pos;
+      sumNeg += j.neg;
+      cells.push(makeCell('JDG' + i + ':', [fmtPos(j.pos), fmtNeg(j.neg)]));
+    }
+    var scoreCells = n;
+    if (showAvg && n > 1) {
+      cells.push(makeCell('AVG:', [fmtAvgPos(sumPos / n), fmtAvgNeg(sumNeg / n)]));
+      scoreCells++;
+    }
+
+    var rows = scoreCells <= 5 ? 1 : 2;
+    var cols = Math.ceil(cells.length / rows);
+    grid.style.gridTemplateColumns = 'repeat(' + cols + ', max-content)';
+    while (grid.firstChild) grid.removeChild(grid.firstChild);
+    cells.forEach(function (c) { grid.appendChild(c); });
+    bar.style.display = 'block';
+    fit();
+  }
+
+  // Keep the bar on one/two thin rows: shrink text until it fits the width.
+  function fit() {
+    var fs = window.innerWidth * 0.0155 * (size / 100);
+    bar.style.fontSize = fs + 'px';
+    var maxW = window.innerWidth * 0.985;
+    for (var i = 0; i < 40 && grid.getBoundingClientRect().width > maxW && fs > 8; i++) {
+      fs *= 0.95;
+      bar.style.fontSize = fs + 'px';
+    }
+  }
+  window.addEventListener('resize', fit);
+
+  // ---- connection
+  var WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  var BACKOFF = [500, 1000, 2000, 3000, 5000];
+  var ws = null;
+  var backoffIdx = 0;
+  var reconnectTimer = null;
+  var lastMsgAt = 0;
+  var connectingSince = 0;
+
+  function scheduleReconnect(delay) {
+    clearTimeout(reconnectTimer);
+    var d = delay || BACKOFF[Math.min(backoffIdx++, BACKOFF.length - 1)];
+    reconnectTimer = setTimeout(openSocket, d);
+  }
+
+  function openSocket() {
+    clearTimeout(reconnectTimer);
+    if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { /* ignore */ } }
+    setDebug('connecting…');
+    var mine = new WebSocket(WS_URL);
+    ws = mine;
+    connectingSince = Date.now();
+    var retryAfter = 0;
+
+    mine.onopen = function () {
+      lastMsgAt = Date.now();
+      mine.send(JSON.stringify({ type: 'hello', role: 'viewer', key: key }));
+    };
+    mine.onmessage = function (e) {
+      if (mine !== ws) return;
+      lastMsgAt = Date.now();
+      var msg;
+      try { msg = JSON.parse(e.data); } catch (err) { return; }
+      if (msg.type === 'ready') {
+        backoffIdx = 0;
+        connectingSince = 0;
+        state = msg.state;
+        setDebug('connected: ' + msg.event.name);
+        render();
+      } else if (msg.type === 'state') {
+        state = msg.state;
+        render();
+      } else if (msg.type === 'error') {
+        setDebug('error: ' + msg.message);
+        retryAfter = 30000; // bad link / expired / full: try again slowly
+      }
+    };
+    mine.onclose = function () {
+      if (mine !== ws) return;
+      ws = null;
+      setDebug('disconnected, retrying…');
+      scheduleReconnect(retryAfter);
+    };
+    mine.onerror = function () { /* onclose handles retry */ };
+  }
+
+  // Watchdog: the server ticks every 3s. Silence means a dead connection.
+  setInterval(function () {
+    if (!ws) return;
+    var now = Date.now();
+    if (ws.readyState === WebSocket.OPEN && now - lastMsgAt > 8000) {
+      setDebug('no data, reconnecting…');
+      ws.close();
+    } else if (ws.readyState === WebSocket.CONNECTING && connectingSince && now - connectingSince > 10000) {
+      ws.close();
+    }
+  }, 2000);
+
+  window.addEventListener('online', function () { backoffIdx = 0; openSocket(); });
+
+  if (!key) setDebug('no overlay key in URL');
+  openSocket();
+})();
+</script>
+</body>
+</html>

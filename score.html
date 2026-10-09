@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Yoyo Judge Scoring</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #1a1a1a;
+    color: #eee;
+    margin: 0;
+    padding: 16px;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: #444; color: #ddd; }
+  .pill-ok { background: #2e7d32; color: #fff; }
+  .pill-warn { background: #f9a825; color: #000; }
+  .pill-bad { background: #c62828; color: #fff; }
+  .panel { background: #242424; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .panel h2 { font-size: 14px; margin: 0 0 8px 0; color: #ccc; }
+  .hidden { display: none !important; }
+  label { display: block; font-size: 12px; color: #aaa; margin-bottom: 4px; }
+  input[type=text], input[type=number], select {
+    padding: 8px 10px; border-radius: 6px; border: 1px solid #3a3a3a;
+    background: #1a1a1a; color: #eee; font-size: 14px;
+  }
+  button {
+    padding: 8px 14px; border: none; border-radius: 6px; font-size: 14px;
+    font-weight: 600; cursor: pointer; background: #1565c0; color: #fff;
+  }
+  button:disabled { background: #444; color: #888; cursor: not-allowed; }
+  .btn-grey { background: #444; }
+  .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+
+  #banners .banner { padding: 10px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .banner.err { background: #7f1d1d; border: 1px solid #ef5350; color: #ffd6d6; }
+  .banner.warn { background: #4a3600; border: 1px solid #f9a825; color: #ffd54f; }
+  .banner.info { background: #12304d; border: 1px solid #1565c0; color: #cfe3ff; font-weight: 400; }
+
+  .ident-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-family: Consolas, monospace; font-size: 13px; flex-wrap: wrap; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: #444; flex-shrink: 0; }
+  .dot.active { background: #66bb6a; box-shadow: 0 0 10px 3px rgba(102,187,106,.8); }
+  .ident-id { color: #aaa; }
+  .ident-meta { margin-left: auto; color: #888; font-size: 11px; }
+  .none { color: #777; font-style: italic; font-size: 13px; }
+
+  #judgesGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+  .card { background: #242424; border: 1px solid #333; border-radius: 10px; padding: 12px; outline: 2px solid transparent; }
+  .card.flash { outline-color: #66bb6a; }
+  .card.flash-err { outline-color: #ef5350; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .card-title { font-weight: 700; font-size: 16px; }
+  .card-head select { flex: 1; max-width: 200px; font-size: 12px; padding: 5px 6px; }
+  .card-warn { color: #ffb74d; font-size: 12px; min-height: 16px; }
+  .counters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0; }
+  .counter { background: #1a1a1a; border-radius: 8px; padding: 8px; text-align: center; }
+  .counter .lbl { font-size: 11px; color: #999; letter-spacing: .5px; }
+  .val { font-size: 34px; font-weight: 700; font-family: Consolas, monospace; margin: 4px 0; }
+  .val.pos { color: #66bb6a; }
+  .val.neg { color: #ef5350; }
+  .cbtns { display: flex; gap: 6px; justify-content: center; }
+  .cbtns button { width: 38px; height: 34px; padding: 0; font-size: 16px; background: #333; }
+  details.map summary { cursor: pointer; font-size: 12px; color: #999; margin-top: 4px; }
+  .map-row { padding: 5px 0; border-bottom: 1px solid #2a2a2a; }
+  .map-top { display: flex; align-items: center; justify-content: space-between; }
+  .map-label { font-size: 12px; color: #999; }
+  .map-add { background: #1a1a1a; color: #64b5f6; border: 1px solid #3a3a3a; padding: 2px 8px; font-size: 11px; }
+  .map-add.listening { background: #f9a825; color: #000; border-color: #f9a825; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .chip { display: flex; align-items: center; gap: 4px; background: #1a1a1a; border: 1px solid #3a3a3a; border-radius: 12px; padding: 2px 4px 2px 9px; font-size: 11px; }
+  .chip .x { cursor: pointer; color: #e57373; font-weight: 700; padding: 0 4px; }
+  .chip-empty { font-size: 11px; color: #777; font-style: italic; }
+  #log { max-height: 180px; overflow-y: auto; font-size: 11px; color: #aaa; white-space: pre-wrap; margin: 8px 0 0 0; }
+  summary { cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>Yoyo Judge Scoring</h1>
+    <div class="pills">
+      <span class="pill" id="connPill">Not connected</span>
+      <span class="pill" id="overlayPill">Overlay: —</span>
+      <span class="pill" id="latPill">— ms</span>
+    </div>
+  </div>
+
+  <div id="banners"></div>
+
+  <div class="panel" id="connectPanel">
+    <h2>Enter your event code</h2>
+    <div class="row">
+      <div>
+        <label for="codeInput">Event code (from the organizer)</label>
+        <input type="text" id="codeInput" autocomplete="off" spellcheck="false" placeholder="WORD-WORD-WORD-00" style="width:280px">
+      </div>
+      <button id="connectBtn">Connect</button>
+    </div>
+    <div id="connectMsg" style="margin-top:8px;font-size:13px;color:#ef9a9a"></div>
+  </div>
+
+  <div id="eventArea" class="hidden">
+    <div class="panel">
+      <div class="row" style="align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:16px;font-weight:700" id="eventName"></div>
+          <div style="font-size:12px;color:#999" id="eventMeta"></div>
+        </div>
+        <button class="btn-grey" id="disconnectBtn">Disconnect / change code</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Now performing (optional, shown on the stream overlay)</h2>
+      <div class="row">
+        <input type="text" id="labelInput" maxlength="40" placeholder="Competitor name / division" style="width:320px">
+        <button class="btn-grey" id="labelClear">Clear</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Controllers — press any button on a controller to see which row lights up</h2>
+      <div id="identList"></div>
+      <div class="row" style="margin-top:10px">
+        <div>
+          <label for="hapticMs">Vibration on score (ms, 0 = off)</label>
+          <input type="number" id="hapticMs" min="0" max="500" step="10" style="width:120px">
+        </div>
+      </div>
+    </div>
+
+    <div id="judgesGrid"></div>
+  </div>
+
+  <details class="panel">
+    <summary>Activity log (useful if something goes wrong)</summary>
+    <pre id="log"></pre>
+  </details>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ------------------------------------------------------------ helpers
+  function $(id) { return document.getElementById(id); }
+
+  function el(tag, props) {
+    var e = document.createElement(tag);
+    if (props) {
+      Object.keys(props).forEach(function (k) {
+        if (k === 'class') e.className = props[k];
+        else if (k === 'text') e.textContent = props[k];
+        else if (k.indexOf('on') === 0) e[k] = props[k];
+        else e.setAttribute(k, props[k]);
+      });
+    }
+    for (var i = 2; i < arguments.length; i++) {
+      var c = arguments[i];
+      if (c == null) continue;
+      e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    }
+    return e;
+  }
+
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } },
+    remove: function (k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
+  };
+
+  function fmt(n) { return (n < 0 ? '-' : '') + String(Math.abs(n)).padStart(3, '0'); }
+
+  var logEl = $('log');
+  function log(msg) {
+    var line = new Date().toLocaleTimeString() + '  ' + msg;
+    logEl.textContent = (logEl.textContent ? logEl.textContent + '\n' : '') + line;
+    var lines = logEl.textContent.split('\n');
+    if (lines.length > 120) logEl.textContent = lines.slice(-120).join('\n');
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // ------------------------------------------------------ button names/maps
+  var BUTTON_NAMES = {
+    0: 'A', 1: 'B', 2: 'X', 3: 'Y', 4: 'Left Bumper', 5: 'Right Bumper',
+    6: 'Left Trigger', 7: 'Right Trigger', 8: 'Back/Select', 9: 'Start',
+    10: 'Left Stick Click', 11: 'Right Stick Click',
+    12: 'D-Pad Up', 13: 'D-Pad Down', 14: 'D-Pad Left', 15: 'D-Pad Right', 16: 'Guide/Xbox',
+  };
+  function buttonName(i) { return BUTTON_NAMES[i] || ('Button ' + i); }
+
+  var ACTIONS = ['pos+', 'pos-', 'neg+', 'neg-', 'pos-reset', 'neg-reset'];
+  var ACTION_LABELS = { 'pos+': 'POS +', 'pos-': 'POS -', 'neg+': 'NEG +', 'neg-': 'NEG -', 'pos-reset': 'POS RESET', 'neg-reset': 'NEG RESET' };
+  var DEFAULT_MAPPING = { 'pos+': [12], 'pos-': [13], 'neg+': [14], 'neg-': [15], 'pos-reset': [9], 'neg-reset': [1] };
+  var TRIGGER_THRESHOLD = 0.5;
+
+  var mappings = {};
+  try { mappings = JSON.parse(store.get('yoyo.mappings.v1') || '{}') || {}; } catch (e) { mappings = {}; }
+
+  function getMapping(n) {
+    if (!mappings[n]) {
+      mappings[n] = {};
+      ACTIONS.forEach(function (a) { mappings[n][a] = DEFAULT_MAPPING[a].slice(); });
+    }
+    return mappings[n];
+  }
+  function saveMappings() { store.set('yoyo.mappings.v1', JSON.stringify(mappings)); }
+
+  var hapticMs = parseInt(store.get('yoyo.haptic'), 10);
+  if (isNaN(hapticMs)) hapticMs = 50;
+  $('hapticMs').value = hapticMs;
+  $('hapticMs').addEventListener('change', function () {
+    var v = parseInt(this.value, 10);
+    hapticMs = isNaN(v) ? 0 : Math.max(0, Math.min(500, v));
+    this.value = hapticMs;
+    store.set('yoyo.haptic', String(hapticMs));
+  });
+
+  // ------------------------------------------------------------ connection
+  var WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  var BACKOFF = [500, 1000, 2000, 3000, 5000];
+  var ws = null;
+  var wantConnected = false;
+  var connected = false;       // server accepted our code (got "ready")
+  var backoffIdx = 0;
+  var reconnectTimer = null;
+  var lastMsgAt = 0;
+  var connectingSince = 0;
+  var currentCode = '';
+  var evt = null;              // { id, name, judges, expiresAt }
+  var lastEpoch = null;
+  var cache = null;            // last known server state, for restore after a server restart
+  var viewers = 0;
+  var rtt = null;
+  var focusLost = false;
+
+  function isHealthy() { return connected && ws && ws.readyState === 1 && Date.now() - lastMsgAt < 6000; }
+
+  function setPill(id, text, cls) {
+    var p = $(id);
+    p.textContent = text;
+    p.className = 'pill' + (cls ? ' ' + cls : '');
+  }
+
+  function updatePills() {
+    if (!wantConnected && !connected) setPill('connPill', 'Not connected', '');
+    else if (isHealthy()) setPill('connPill', 'Connected', 'pill-ok');
+    else if (connected) setPill('connPill', 'Connection unstable', 'pill-warn');
+    else setPill('connPill', 'Connecting…', 'pill-warn');
+
+    if (!connected) setPill('overlayPill', 'Overlay: —', '');
+    else if (viewers > 0) setPill('overlayPill', 'Overlay: connected', 'pill-ok');
+    else setPill('overlayPill', 'Overlay: not connected', 'pill-warn');
+
+    if (rtt == null || !isHealthy()) setPill('latPill', '— ms', '');
+    else setPill('latPill', Math.round(rtt) + ' ms', rtt < 150 ? 'pill-ok' : (rtt < 400 ? 'pill-warn' : 'pill-bad'));
+  }
+
+  function connect(code) {
+    currentCode = code;
+    wantConnected = true;
+    backoffIdx = 0;
+    $('connectMsg').textContent = '';
+    openSocket();
+  }
+
+  function openSocket() {
+    clearTimeout(reconnectTimer);
+    if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { /* ignore */ } }
+    connected = false;
+    var mine = new WebSocket(WS_URL);
+    ws = mine;
+    connectingSince = Date.now();
+    log('Connecting…');
+
+    mine.onopen = function () {
+      lastMsgAt = Date.now();
+      mine.send(JSON.stringify({ type: 'hello', role: 'scorer', code: currentCode }));
+    };
+    mine.onmessage = function (e) {
+      if (mine !== ws) return;
+      lastMsgAt = Date.now();
+      var msg;
+      try { msg = JSON.parse(e.data); } catch (err) { return; }
+      handleMessage(msg);
+    };
+    mine.onclose = function () {
+      if (mine !== ws) return;
+      ws = null;
+      if (connected) log('Connection lost.');
+      connected = false;
+      updatePills();
+      updateBanners();
+      scheduleReconnect(mine._retryAfter);
+    };
+    mine.onerror = function () { /* onclose handles retry */ };
+  }
+
+  function scheduleReconnect(delay) {
+    if (!wantConnected) return;
+    clearTimeout(reconnectTimer);
+    var d = delay || BACKOFF[Math.min(backoffIdx++, BACKOFF.length - 1)];
+    reconnectTimer = setTimeout(openSocket, d);
+  }
+
+  function disconnect(forget) {
+    wantConnected = false;
+    connected = false;
+    clearTimeout(reconnectTimer);
+    if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { /* ignore */ } ws = null; }
+    if (forget) store.remove('yoyo.code');
+    $('eventArea').classList.add('hidden');
+    $('connectPanel').classList.remove('hidden');
+    updatePills();
+    updateBanners();
+  }
+
+  function handleMessage(msg) {
+    switch (msg.type) {
+      case 'ready': {
+        connected = true;
+        backoffIdx = 0;
+        connectingSince = 0;
+        var newEvent = !evt || evt.id !== msg.event.id || evt.judges !== msg.event.judges;
+        var serverRestarted = lastEpoch && lastEpoch !== msg.epoch;
+        var toRestore = null;
+        if (!newEvent && serverRestarted && msg.state.v === 0 && cache && cache.eventId === msg.event.id && hasScores(cache.state)) {
+          toRestore = cache.state;
+        }
+        evt = msg.event;
+        lastEpoch = msg.epoch;
+        store.set('yoyo.code', currentCode);
+        if (newEvent) { buildJudges(evt.judges); cache = null; }
+        showEvent();
+        applyState(msg.state);
+        viewers = msg.status ? msg.status.viewers : 0;
+        if (toRestore) {
+          ws.send(JSON.stringify({ type: 'restore', state: toRestore }));
+          log('Server had restarted; restored scores.');
+        }
+        log('Connected to "' + evt.name + '" (' + evt.judges + ' judges).');
+        requestWake();
+        break;
+      }
+      case 'state': applyState(msg.state); break;
+      case 'status': viewers = msg.viewers; break;
+      case 'pong': rtt = rtt == null ? performance.now() - msg.t : rtt * 0.7 + (performance.now() - msg.t) * 0.3; break;
+      case 'tick': break;
+      case 'error':
+        log('Server: ' + msg.message);
+        if (msg.fatal) {
+          wantConnected = false;
+          store.remove('yoyo.code');
+          disconnect(false);
+          $('connectMsg').textContent = msg.message;
+        } else if (ws) {
+          ws._retryAfter = 30000;
+          $('connectMsg').textContent = msg.message;
+        }
+        break;
+      default: break;
+    }
+    updatePills();
+    updateBanners();
+  }
+
+  function hasScores(s) {
+    return Object.keys(s.judges).some(function (k) { return s.judges[k].pos !== 0 || s.judges[k].neg !== 0; });
+  }
+
+  // Watchdog + latency probe
+  setInterval(function () {
+    if (!ws) return;
+    var now = Date.now();
+    if (ws.readyState === 1 && now - lastMsgAt > 8000) {
+      log('No data from server for 8s, reconnecting.');
+      ws.close();
+    } else if (ws.readyState === 0 && connectingSince && now - connectingSince > 10000) {
+      ws.close();
+    }
+  }, 2000);
+
+  setInterval(function () {
+    if (isHealthy()) ws.send(JSON.stringify({ type: 'ping', t: performance.now() }));
+    updatePills();
+  }, 3000);
+
+  window.addEventListener('online', function () {
+    if (wantConnected && !connected) { backoffIdx = 0; openSocket(); }
+  });
+
+  // ------------------------------------------------------------ wake lock
+  var wakeLock = null;
+  function requestWake() {
+    try {
+      if ('wakeLock' in navigator && !wakeLock) {
+        navigator.wakeLock.request('screen').then(function (l) {
+          wakeLock = l;
+          l.addEventListener('release', function () { wakeLock = null; });
+        }).catch(function () { /* ignore */ });
+      }
+    } catch (e) { /* ignore */ }
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && connected) requestWake();
+  });
+
+  // ------------------------------------------------------------ judges UI
+  var ui = {};                // n -> { card, posEl, negEl, select, warn, mapBox }
+  var assignment = {};        // n -> gamepad index | null
+  var cardWarn = {};          // n -> text
+  var remap = { active: false, judge: null, action: null, timer: null };
+
+  function showEvent() {
+    $('connectPanel').classList.add('hidden');
+    $('eventArea').classList.remove('hidden');
+    $('eventName').textContent = evt.name;
+    $('eventMeta').textContent = evt.judges + ' judge' + (evt.judges === 1 ? '' : 's')
+      + (evt.expiresAt ? ' · code valid until ' + new Date(evt.expiresAt).toLocaleString() : '');
+  }
+
+  function buildJudges(count) {
+    var grid = $('judgesGrid');
+    grid.textContent = '';
+    ui = {};
+    assignment = {};
+    cardWarn = {};
+    for (var n = 1; n <= count; n++) buildCard(n, grid);
+    refreshSelects();
+  }
+
+  function counter(label, valEl, type, n) {
+    return el('div', { class: 'counter' },
+      el('div', { class: 'lbl', text: label }),
+      valEl,
+      el('div', { class: 'cbtns' },
+        el('button', { text: '−', title: label + ' −1', onclick: function () { manual(n, type + '-'); } }),
+        el('button', { text: '+', title: label + ' +1', onclick: function () { manual(n, type + '+'); } }),
+        el('button', { text: '↺', title: 'Reset ' + label, onclick: function () { manual(n, type + '-reset'); } })
+      )
+    );
+  }
+
+  function buildCard(n, grid) {
+    var posEl = el('div', { class: 'val pos', text: '000' });
+    var negEl = el('div', { class: 'val neg', text: '000' });
+    var select = el('select', { onchange: function () { onAssign(n, select.value); } });
+    var warn = el('div', { class: 'card-warn' });
+    var mapBox = el('div');
+    var card = el('div', { class: 'card' },
+      el('div', { class: 'card-head' }, el('div', { class: 'card-title', text: 'Judge ' + n }), select),
+      warn,
+      el('div', { class: 'counters' }, counter('POS', posEl, 'pos', n), counter('NEG', negEl, 'neg', n)),
+      el('details', { class: 'map' }, el('summary', { text: 'Button mapping' }), mapBox)
+    );
+    grid.appendChild(card);
+    ui[n] = { card: card, posEl: posEl, negEl: negEl, select: select, warn: warn, mapBox: mapBox };
+    renderMapping(n);
+  }
+
+  function applyState(state) {
+    cache = { eventId: evt.id, state: JSON.parse(JSON.stringify(state)) };
+    for (var n = 1; n <= evt.judges; n++) {
+      var j = state.judges[n] || { pos: 0, neg: 0 };
+      if (ui[n]) {
+        ui[n].posEl.textContent = fmt(j.pos);
+        ui[n].negEl.textContent = fmt(j.neg);
+      }
+    }
+    var li = $('labelInput');
+    if (document.activeElement !== li) li.value = state.label || '';
+  }
+
+  function flash(n, ok) {
+    var card = ui[n] && ui[n].card;
+    if (!card) return;
+    var cls = ok ? 'flash' : 'flash-err';
+    card.classList.add(cls);
+    setTimeout(function () { card.classList.remove(cls); }, 160);
+  }
+
+  // ------------------------------------------------------------- actions
+  function sendAction(judge, action) {
+    if (!isHealthy()) return false;
+    ws.send(JSON.stringify({ type: 'action', judge: judge, action: action }));
+    return true;
+  }
+
+  function manual(n, action) {
+    if (!sendAction(n, action)) { flash(n, false); updateBanners(); }
+  }
+
+  var labelTimer = null;
+  $('labelInput').addEventListener('input', function () {
+    clearTimeout(labelTimer);
+    var v = this.value;
+    labelTimer = setTimeout(function () {
+      if (isHealthy()) ws.send(JSON.stringify({ type: 'label', text: v }));
+    }, 300);
+  });
+  $('labelClear').addEventListener('click', function () {
+    $('labelInput').value = '';
+    if (isHealthy()) ws.send(JSON.stringify({ type: 'label', text: '' }));
+  });
+
+  // ---------------------------------------------------------- mapping UI
+  function renderMapping(n) {
+    var box = ui[n].mapBox;
+    var mapping = getMapping(n);
+    box.textContent = '';
+    ACTIONS.forEach(function (action) {
+      var listening = remap.active && remap.judge === n && remap.action === action;
+      var chips = el('div', { class: 'chips' });
+      var list = mapping[action] || [];
+      if (!list.length) chips.appendChild(el('span', { class: 'chip-empty', text: 'unmapped' }));
+      list.forEach(function (idx, i) {
+        chips.appendChild(el('span', { class: 'chip' }, buttonName(idx),
+          el('span', { class: 'x', text: '×', onclick: function () {
+            mapping[action].splice(i, 1);
+            saveMappings();
+            renderMapping(n);
+          } })));
+      });
+      box.appendChild(el('div', { class: 'map-row' },
+        el('div', { class: 'map-top' },
+          el('span', { class: 'map-label', text: ACTION_LABELS[action] }),
+          el('button', {
+            class: 'map-add' + (listening ? ' listening' : ''),
+            text: listening ? 'Press a button…' : '+ Add',
+            onclick: function () { startRemap(n, action); },
+          })),
+        chips));
+    });
+    box.appendChild(el('button', {
+      class: 'btn-grey', style: 'margin-top:8px;font-size:12px;padding:4px 10px', text: 'Reset this judge to defaults',
+      onclick: function () { delete mappings[n]; saveMappings(); renderMapping(n); },
+    }));
+  }
+
+  function startRemap(n, action) {
+    var same = remap.active && remap.judge === n && remap.action === action;
+    cancelRemap();
+    if (same) return;
+    remap.active = true;
+    remap.judge = n;
+    remap.action = action;
+    remap.timer = setTimeout(function () { cancelRemap(); updateBanners(); }, 8000);
+    renderMapping(n);
+    updateBanners();
+  }
+
+  function cancelRemap() {
+    var prev = remap.judge;
+    clearTimeout(remap.timer);
+    remap.active = false;
+    remap.judge = null;
+    remap.action = null;
+    if (prev && ui[prev]) renderMapping(prev);
+  }
+
+  // --------------------------------------------------------- controllers
+  var prevStates = {};     // pad index -> array of booleans
+  var lastActivity = {};   // pad index -> { idx, time }
+  var lastSig = '';
+
+  function getPads() {
+    var raw = navigator.getGamepads ? navigator.getGamepads() : [];
+    var out = [];
+    for (var i = 0; i < raw.length; i++) if (raw[i]) out.push(raw[i]);
+    return out;
+  }
+
+  function judgeForPad(padIndex) {
+    for (var n in assignment) if (assignment[n] === padIndex) return Number(n);
+    return null;
+  }
+
+  function onAssign(n, val) {
+    var idx = val === '' ? null : Number(val);
+    if (idx !== null) {
+      for (var m in assignment) {
+        if (Number(m) !== n && assignment[m] === idx) {
+          assignment[m] = null;
+          cardWarn[m] = 'Controller moved to Judge ' + n;
+        }
+      }
+    }
+    assignment[n] = idx;
+    delete cardWarn[n];
+    log('Judge ' + n + (idx === null ? ' controller cleared.' : ' assigned to Gamepad ' + idx + '.'));
+    refreshSelects();
+    updateBanners();
+  }
+
+  function refreshSelects() {
+    var pads = getPads();
+    Object.keys(ui).forEach(function (k) {
+      var n = Number(k);
+      var sel = ui[n].select;
+      sel.textContent = '';
+      sel.appendChild(el('option', { value: '', text: '-- No controller --' }));
+      pads.forEach(function (p) {
+        sel.appendChild(el('option', { value: String(p.index), text: 'Gamepad ' + p.index + ': ' + p.id.slice(0, 28) }));
+      });
+      sel.value = assignment[n] == null ? '' : String(assignment[n]);
+      ui[n].warn.textContent = cardWarn[n] || '';
+    });
+  }
+
+  function checkPadChanges() {
+    var pads = getPads();
+    var sig = pads.map(function (p) { return p.index + ':' + p.id; }).join('|');
+    if (sig === lastSig) return;
+    lastSig = sig;
+    Object.keys(assignment).forEach(function (n) {
+      var idx = assignment[n];
+      if (idx != null && !pads.some(function (p) { return p.index === idx; })) {
+        assignment[n] = null;
+        cardWarn[n] = '⚠ Controller disconnected. Reassign it.';
+        log('Judge ' + n + ' controller disconnected.');
+      }
+    });
+    refreshSelects();
+    updateBanners();
+  }
+
+  function renderIdent() {
+    var list = $('identList');
+    var pads = getPads();
+    var now = performance.now();
+    list.textContent = '';
+    if (!pads.length) {
+      list.appendChild(el('div', { class: 'none', text: 'No controllers detected. Connect a controller, then press any button on it.' }));
+      return;
+    }
+    pads.forEach(function (pad) {
+      var act = lastActivity[pad.index];
+      var active = act && now - act.time < 300;
+      var judge = judgeForPad(pad.index);
+      list.appendChild(el('div', { class: 'ident-row' },
+        el('span', { class: 'dot' + (active ? ' active' : '') }),
+        el('strong', { text: 'Gamepad ' + pad.index }),
+        el('span', { class: 'ident-id', text: pad.id.slice(0, 70) }),
+        el('span', { class: 'ident-meta', text: (act ? 'last: ' + buttonName(act.idx) : 'no input yet') + ' · ' + (judge ? 'Judge ' + judge : 'unassigned') })));
+    });
+  }
+
+  function newPresses(pad) {
+    var prev = prevStates[pad.index] || (prevStates[pad.index] = []);
+    var out = [];
+    for (var i = 0; i < pad.buttons.length; i++) {
+      var b = pad.buttons[i];
+      var down = (i === 6 || i === 7) ? b.value >= TRIGGER_THRESHOLD : b.pressed;
+      if (down && !prev[i]) out.push(i);
+      prev[i] = down;
+    }
+    return out;
+  }
+
+  function vibrate(pad, ms) {
+    if (!ms || ms <= 0) return;
+    var a = pad && pad.vibrationActuator;
+    if (a && a.playEffect) {
+      try {
+        var p = a.playEffect('dual-rumble', { duration: ms, weakMagnitude: 1, strongMagnitude: 1 });
+        if (p && p.catch) p.catch(function () { /* ignore */ });
+      } catch (e) { /* ignore */ }
+    }
+  }
+
+  function pollOnce() {
+    var pads = getPads();
+    for (var p = 0; p < pads.length; p++) {
+      var pad = pads[p];
+      var presses = newPresses(pad);
+      for (var k = 0; k < presses.length; k++) {
+        var idx = presses[k];
+        lastActivity[pad.index] = { idx: idx, time: performance.now() };
+
+        if (remap.active) {
+          var list = getMapping(remap.judge)[remap.action];
+          if (list.indexOf(idx) === -1) {
+            list.push(idx);
+            saveMappings();
+            log('Judge ' + remap.judge + ' ' + ACTION_LABELS[remap.action] + ': added ' + buttonName(idx));
+          }
+          cancelRemap();
+          updateBanners();
+          continue; // this press was for mapping, not scoring
+        }
+
+        var judge = judgeForPad(pad.index);
+        if (!judge) continue;
+        var mapping = getMapping(judge);
+        var action = null;
+        for (var a = 0; a < ACTIONS.length; a++) {
+          if (mapping[ACTIONS[a]].indexOf(idx) !== -1) { action = ACTIONS[a]; break; }
+        }
+        if (!action) continue;
+        var ok = sendAction(judge, action);
+        vibrate(pad, ok ? hapticMs : 350); // long buzz = press was NOT recorded
+        flash(judge, ok);
+        if (!ok) updateBanners();
+      }
+    }
+  }
+
+  // Poll faster than the display refresh so very quick taps aren't missed.
+  setInterval(pollOnce, 5);
+  setInterval(function () { renderIdent(); checkPadChanges(); }, 100);
+  window.addEventListener('gamepadconnected', function (e) { log('Gamepad connected: ' + e.gamepad.id); checkPadChanges(); });
+  window.addEventListener('gamepaddisconnected', function (e) { log('Gamepad disconnected: ' + e.gamepad.id); checkPadChanges(); });
+
+  // ------------------------------------------------------------- banners
+  function updateBanners() {
+    var box = $('banners');
+    var items = [];
+    if (wantConnected && !isHealthy()) {
+      items.push(['err', '⚠ NOT CONNECTED to the server — scores are NOT being recorded. Reconnecting automatically…']);
+    }
+    if (connected && focusLost) {
+      items.push(['warn', '⚠ This window is not in focus — controller input is paused. Click anywhere on this page.']);
+    }
+    if (remap.active) {
+      items.push(['warn', 'Listening for a button for Judge ' + remap.judge + ' ' + ACTION_LABELS[remap.action] + '… scoring is paused for a few seconds.']);
+    }
+    if (connected && evt) {
+      var missing = [];
+      for (var n = 1; n <= evt.judges; n++) if (assignment[n] == null) missing.push(n);
+      if (missing.length) {
+        items.push(['info', 'Judges without a controller: ' + missing.join(', ') + ' (on-screen buttons still work).']);
+      }
+    }
+    box.textContent = '';
+    items.forEach(function (it) { box.appendChild(el('div', { class: 'banner ' + it[0], text: it[1] })); });
+  }
+
+  function checkFocus() {
+    var lost = document.visibilityState !== 'visible' || !document.hasFocus();
+    if (lost !== focusLost) { focusLost = lost; updateBanners(); }
+  }
+  setInterval(checkFocus, 500);
+  window.addEventListener('focus', checkFocus);
+  window.addEventListener('blur', checkFocus);
+  setInterval(updateBanners, 1000);
+
+  // --------------------------------------------------------------- start
+  function submitCode() {
+    var code = $('codeInput').value.trim();
+    if (!code) { $('connectMsg').textContent = 'Enter your event code.'; return; }
+    connect(code);
+  }
+  $('connectBtn').addEventListener('click', submitCode);
+  $('codeInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitCode(); });
+  $('disconnectBtn').addEventListener('click', function () { disconnect(true); });
+
+  var urlCode = new URLSearchParams(location.search).get('code');
+  var startCode = urlCode || store.get('yoyo.code') || '';
+  if (startCode) {
+    $('codeInput').value = startCode;
+    connect(startCode);
+  }
+  updatePills();
+})();
+</script>
+</body>
+</html>

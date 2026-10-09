@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Yoyo Scoring Admin</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #1a1a1a; color: #eee; margin: 0; padding: 16px; }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 12px 0; }
+  .panel { background: #242424; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .panel h2 { font-size: 14px; margin: 0 0 10px 0; color: #ccc; }
+  .hidden { display: none !important; }
+  label { display: block; font-size: 12px; color: #aaa; margin-bottom: 4px; }
+  input, select { padding: 8px 10px; border-radius: 6px; border: 1px solid #3a3a3a; background: #1a1a1a; color: #eee; font-size: 14px; }
+  button { padding: 7px 12px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; background: #1565c0; color: #fff; }
+  button.grey { background: #444; }
+  button.red { background: #c62828; }
+  button.green { background: #2e7d32; }
+  .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .msg { font-size: 13px; margin-top: 8px; color: #ef9a9a; min-height: 18px; }
+  .ev { border: 1px solid #333; }
+  .ev-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .ev-name { font-size: 17px; font-weight: 700; }
+  .badge { padding: 3px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; background: #444; }
+  .badge.active { background: #2e7d32; }
+  .badge.expired { background: #8a6d00; }
+  .badge.revoked { background: #c62828; }
+  .meta { font-size: 12px; color: #999; margin: 4px 0 10px 0; }
+  .field { display: flex; align-items: center; gap: 8px; margin: 5px 0; flex-wrap: wrap; }
+  .field .k { width: 110px; font-size: 12px; color: #999; flex-shrink: 0; }
+  .field .v { flex: 1; min-width: 200px; font-family: Consolas, monospace; font-size: 13px; word-break: break-all; background: #1a1a1a; padding: 6px 8px; border-radius: 6px; }
+  .live { margin-top: 10px; padding: 8px; background: #1a1a1a; border-radius: 6px; font-size: 13px; }
+  .live .scores { font-family: Consolas, monospace; font-size: 13px; margin-top: 4px; color: #bbb; white-space: pre-wrap; }
+  .dotc { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #555; margin-right: 5px; }
+  .dotc.on { background: #66bb6a; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .hint { font-size: 12px; color: #888; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Yoyo Scoring Admin</h1>
+
+  <div class="panel" id="loginPanel">
+    <h2>Admin password</h2>
+    <div class="row">
+      <input type="password" id="pw" autocomplete="current-password" style="width:260px">
+      <button id="loginBtn">Sign in</button>
+    </div>
+    <div class="msg" id="loginMsg"></div>
+  </div>
+
+  <div id="mainArea" class="hidden">
+    <div class="panel">
+      <h2>Create an event</h2>
+      <div class="row">
+        <div><label for="newName">Event name</label><input type="text" id="newName" maxlength="80" style="width:280px" placeholder="e.g. Midwest Regionals 2026"></div>
+        <div><label for="newJudges">Judges</label><select id="newJudges"></select></div>
+        <div><label for="newHours">Codes valid for</label>
+          <select id="newHours">
+            <option value="24">1 day</option>
+            <option value="72" selected>3 days</option>
+            <option value="168">1 week</option>
+            <option value="720">30 days</option>
+          </select>
+        </div>
+        <button class="green" id="createBtn">Create</button>
+      </div>
+      <div class="msg" id="createMsg"></div>
+    </div>
+
+    <div id="eventList"></div>
+    <div class="hint" id="updated"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+
+  function el(tag, props) {
+    var e = document.createElement(tag);
+    if (props) {
+      Object.keys(props).forEach(function (k) {
+        if (k === 'class') e.className = props[k];
+        else if (k === 'text') e.textContent = props[k];
+        else if (k.indexOf('on') === 0) e[k] = props[k];
+        else e.setAttribute(k, props[k]);
+      });
+    }
+    for (var i = 2; i < arguments.length; i++) {
+      var c = arguments[i];
+      if (c == null) continue;
+      e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    }
+    return e;
+  }
+
+  var password = sessionStorage.getItem('yoyo.admin') || '';
+  var cards = {};      // id -> { root, refs }
+  var timer = null;
+  var judgeOptionsBuilt = false;
+
+  function api(method, path, body) {
+    return fetch('/api/admin' + path, {
+      method: method,
+      headers: { 'Authorization': 'Bearer ' + password, 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (!r.ok) { var err = new Error(data.error || ('HTTP ' + r.status)); err.status = r.status; throw err; }
+        return data;
+      });
+    });
+  }
+
+  function showLogin(msg) {
+    $('mainArea').classList.add('hidden');
+    $('loginPanel').classList.remove('hidden');
+    $('loginMsg').textContent = msg || '';
+    clearInterval(timer);
+    timer = null;
+  }
+
+  function showMain() {
+    $('loginPanel').classList.add('hidden');
+    $('mainArea').classList.remove('hidden');
+    if (!timer) timer = setInterval(function () { if (!document.hidden) refresh(); }, 2000);
+  }
+
+  function refresh() {
+    return api('GET', '/events').then(function (data) {
+      if (!judgeOptionsBuilt) {
+        var sel = $('newJudges');
+        for (var i = 1; i <= data.maxJudges; i++) sel.appendChild(el('option', { value: String(i), text: String(i) }));
+        sel.value = String(Math.min(2, data.maxJudges));
+        judgeOptionsBuilt = true;
+      }
+      showMain();
+      renderList(data.events);
+      $('updated').textContent = 'Updated ' + new Date().toLocaleTimeString() + ' (refreshes every 2 seconds)';
+    }).catch(function (err) {
+      if (err.status === 401 || err.status === 503 || err.status === 429) {
+        sessionStorage.removeItem('yoyo.admin');
+        password = '';
+        showLogin(err.message);
+      } else {
+        $('updated').textContent = 'Connection problem: ' + err.message;
+      }
+    });
+  }
+
+  function fmtScore(n, plus) { return (n < 0 ? (plus ? '-' : '+') : (plus ? '+' : '-')) + String(Math.abs(n)).padStart(3, '0'); }
+
+  function copy(text, btn) {
+    var done = function () { var t = btn.textContent; btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = t; }, 1200); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () { window.prompt('Copy this:', text); });
+    else window.prompt('Copy this:', text);
+  }
+
+  function field(label, valueEl, buttons) {
+    var row = el('div', { class: 'field' }, el('span', { class: 'k', text: label }), valueEl);
+    (buttons || []).forEach(function (b) { row.appendChild(b); });
+    return row;
+  }
+
+  function buildCard(ev) {
+    var refs = {};
+    refs.name = el('span', { class: 'ev-name' });
+    refs.badge = el('span', { class: 'badge' });
+    refs.meta = el('div', { class: 'meta' });
+    refs.code = el('div', { class: 'v' });
+    refs.score = el('div', { class: 'v' });
+    refs.overlay = el('div', { class: 'v' });
+    refs.live = el('div', { class: 'live' });
+    refs.liveLine = el('div');
+    refs.liveScores = el('div', { class: 'scores' });
+    refs.live.appendChild(refs.liveLine);
+    refs.live.appendChild(refs.liveScores);
+
+    var copyCode = el('button', { class: 'grey', text: 'Copy', onclick: function () { copy(refs.ev.scorerCode, copyCode); } });
+    var copyScore = el('button', { class: 'grey', text: 'Copy', onclick: function () { copy(refs.scoreUrl, copyScore); } });
+    var openScore = el('button', { class: 'grey', text: 'Open', onclick: function () { window.open(refs.scoreUrl, '_blank'); } });
+    var copyOverlay = el('button', { class: 'grey', text: 'Copy', onclick: function () { copy(refs.overlayUrl, copyOverlay); } });
+    var previewOverlay = el('button', { class: 'grey', text: 'Preview', onclick: function () { window.open(refs.overlayUrl + '?debug=1', '_blank'); } });
+
+    refs.revokeBtn = el('button', { class: 'grey', onclick: function () {
+      var revoke = !refs.ev.revoked;
+      if (revoke && !confirm('Disable this event? Connected scoring pages and overlays will be disconnected.')) return;
+      act('POST', '/events/' + refs.ev.id + '/revoke', { revoked: revoke });
+    } });
+
+    var actions = el('div', { class: 'actions' },
+      el('button', { class: 'grey', text: 'Extend +24h', onclick: function () { act('POST', '/events/' + refs.ev.id + '/extend', { hours: 24 }); } }),
+      el('button', { class: 'grey', text: 'Reset all scores', onclick: function () {
+        if (confirm('Reset every judge to 000 / 000?')) act('POST', '/events/' + refs.ev.id + '/reset');
+      } }),
+      refs.revokeBtn,
+      el('button', { class: 'grey', text: 'Regenerate codes', onclick: function () {
+        if (confirm('Make new codes? The current scoring code and overlay link stop working immediately.')) act('POST', '/events/' + refs.ev.id + '/regenerate');
+      } }),
+      el('button', { class: 'red', text: 'Delete', onclick: function () {
+        if (confirm('Delete this event permanently?')) act('DELETE', '/events/' + refs.ev.id);
+      } })
+    );
+
+    var root = el('div', { class: 'panel ev' },
+      el('div', { class: 'ev-head' }, refs.name, refs.badge),
+      refs.meta,
+      field('Scoring code', refs.code, [copyCode]),
+      field('Scoring link', refs.score, [copyScore, openScore]),
+      field('Overlay URL', refs.overlay, [copyOverlay, previewOverlay]),
+      el('div', { class: 'hint', text: 'OBS: add a Browser Source with the Overlay URL, width 1920, height 1080 (match your canvas). Options: add ?size=120, ?pos=top, ?font=Orbitron, ?avg=0' }),
+      refs.live,
+      actions
+    );
+    return { root: root, refs: refs };
+  }
+
+  function act(method, path, body) {
+    return api(method, path, body).then(refresh).catch(function (err) { alert(err.message); });
+  }
+
+  function updateCard(card, ev) {
+    var r = card.refs;
+    r.ev = ev;
+    r.scoreUrl = location.origin + '/score?code=' + encodeURIComponent(ev.scorerCode);
+    r.overlayUrl = location.origin + '/overlay/' + ev.viewKey;
+    r.name.textContent = ev.name;
+    r.badge.textContent = ev.status.toUpperCase();
+    r.badge.className = 'badge ' + ev.status;
+    r.meta.textContent = ev.judges + ' judge' + (ev.judges === 1 ? '' : 's')
+      + ' · created ' + new Date(ev.createdAt).toLocaleString()
+      + ' · expires ' + new Date(ev.expiresAt).toLocaleString();
+    r.code.textContent = ev.scorerCode;
+    r.score.textContent = r.scoreUrl;
+    r.overlay.textContent = r.overlayUrl;
+    r.revokeBtn.textContent = ev.revoked ? 'Enable' : 'Disable';
+
+    var live = ev.live;
+    r.liveLine.textContent = '';
+    r.liveLine.appendChild(el('span', { class: 'dotc' + (live.scorers > 0 ? ' on' : '') }));
+    r.liveLine.appendChild(document.createTextNode('Scoring laptops: ' + live.scorers + '    '));
+    r.liveLine.appendChild(el('span', { class: 'dotc' + (live.viewers > 0 ? ' on' : '') }));
+    r.liveLine.appendChild(document.createTextNode('Overlay connections: ' + live.viewers));
+
+    var st = live.state;
+    var parts = [];
+    for (var i = 1; i <= ev.judges; i++) {
+      var j = st.judges[i] || { pos: 0, neg: 0 };
+      parts.push('J' + i + ' ' + fmtScore(j.pos, true) + ' ' + fmtScore(j.neg, false));
+    }
+    r.liveScores.textContent = parts.join('   ') + (st.label ? '\nNow performing: ' + st.label : '');
+  }
+
+  function renderList(list) {
+    var container = $('eventList');
+    var seen = {};
+    list.forEach(function (ev, i) {
+      seen[ev.id] = true;
+      var card = cards[ev.id];
+      if (!card) {
+        card = buildCard(ev);
+        cards[ev.id] = card;
+        container.insertBefore(card.root, container.children[i] || null);
+      }
+      updateCard(card, ev);
+    });
+    Object.keys(cards).forEach(function (id) {
+      if (!seen[id]) { cards[id].root.remove(); delete cards[id]; }
+    });
+    if (!list.length && !container.firstChild) {
+      container.appendChild(el('div', { class: 'hint', text: 'No events yet. Create one above.' }));
+    } else if (list.length && container.firstChild && container.firstChild.className === 'hint') {
+      container.removeChild(container.firstChild);
+    }
+  }
+
+  $('createBtn').addEventListener('click', function () {
+    $('createMsg').textContent = '';
+    api('POST', '/events', {
+      name: $('newName').value,
+      judges: Number($('newJudges').value),
+      hours: Number($('newHours').value),
+    }).then(function () {
+      $('newName').value = '';
+      refresh();
+    }).catch(function (err) { $('createMsg').textContent = err.message; });
+  });
+
+  function login() {
+    password = $('pw').value;
+    sessionStorage.setItem('yoyo.admin', password);
+    $('loginMsg').textContent = '';
+    refresh();
+  }
+  $('loginBtn').addEventListener('click', login);
+  $('pw').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
+
+  if (password) refresh(); else showLogin('');
+})();
+</script>
+</body>
+</html>
