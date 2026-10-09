@@ -141,6 +141,9 @@
         sel.value = String(Math.min(2, data.maxJudges));
         judgeOptionsBuilt = true;
       }
+      maxJudges = data.maxJudges;
+      if (false) {
+      }
       showMain();
       renderList(data.events);
       $('updated').textContent = 'Updated ' + new Date().toLocaleTimeString() + ' (refreshes every 2 seconds)';
@@ -189,6 +192,18 @@
     var copyOverlay = el('button', { class: 'grey', text: 'Copy', onclick: function () { copy(refs.overlayUrl, copyOverlay); } });
     var previewOverlay = el('button', { class: 'grey', text: 'Preview', onclick: function () { window.open(refs.overlayUrl + '?debug=1', '_blank'); } });
 
+    refs.judgeSel = el('select', { onchange: function () {
+      var n = Number(refs.judgeSel.value);
+      if (n === refs.ev.judges) return;
+      var msg = n < refs.ev.judges
+        ? 'Reduce to ' + n + ' judges? Scores for the removed judges are discarded.'
+        : 'Change to ' + n + ' judges?';
+      if (!confirm(msg)) { refs.judgeSel.value = String(refs.ev.judges); return; }
+      act('POST', '/events/' + refs.ev.id + '/judges', { judges: n });
+    } });
+    for (var jn = 1; jn <= maxJudges; jn++) refs.judgeSel.appendChild(el('option', { value: String(jn), text: String(jn) }));
+    var judgeRow = el('div', { class: 'actions' }, el('span', { class: 'k', text: 'Judges' }), refs.judgeSel);
+
     refs.revokeBtn = el('button', { class: 'grey', onclick: function () {
       var revoke = !refs.ev.revoked;
       if (revoke && !confirm('Disable this event? Connected scoring pages and overlays will be disconnected.')) return;
@@ -217,6 +232,7 @@
       field('Overlay URL', refs.overlay, [copyOverlay, previewOverlay]),
       el('div', { class: 'hint', text: 'OBS: add a Browser Source with the Overlay URL, width 1920, height 1080 (match your canvas). Options: add ?size=120, ?pos=top, ?font=Orbitron, ?avg=0' }),
       refs.live,
+      judgeRow,
       actions
     );
     return { root: root, refs: refs };
@@ -240,6 +256,7 @@
     r.code.textContent = ev.scorerCode;
     r.score.textContent = r.scoreUrl;
     r.overlay.textContent = r.overlayUrl;
+    if (document.activeElement !== r.judgeSel) r.judgeSel.value = String(ev.judges);
     r.revokeBtn.textContent = ev.revoked ? 'Enable' : 'Disable';
 
     var live = ev.live;

@@ -70,7 +70,7 @@ Optional URL add-ons (put after the URL): `?size=120` bigger text, `?pos=top` mo
 4. For each judge, pick that judge's controller from the dropdown on their card.
 5. Keep this browser tab **open and in front**. Browsers pause controller input for tabs in the background or on a minimized window. The page warns you if that happens.
 
-Default controls: D-Pad Up/Down = POS +/-, D-Pad Left/Right = NEG +/-, Start = reset POS, B = reset NEG. Every button can be remapped per judge under "Button mapping" on each card, and mappings are remembered on that laptop. A second button can be added to any action (useful for rapid double taps).
+Default controls: POS clicker = RB (+), RT (-), Start (reset). NEG clicker = LB (+), LT (-), Select/Back (reset). Every button can be remapped per judge under "Button mapping" on each card, and mappings are remembered on that laptop. A second button can be added to any action (useful for rapid double taps).
 
 If a button press can't be recorded (connection down), the controller gives one long buzz and a red banner appears.
 

@@ -378,6 +378,35 @@ async function handleApi(req, res, url) {
     return json(res, 200, { event: adminView(ev) });
   }
 
+  if (method === 'POST' && action === 'judges') {
+    const body = await readJson(req);
+    const judges = parseInt(body.judges, 10);
+    if (!(judges >= 1 && judges <= MAX_JUDGES)) {
+      return json(res, 400, { error: 'Judges must be between 1 and ' + MAX_JUDGES + '.' });
+    }
+    if (judges !== ev.judges) {
+      ev.judges = judges;
+      saveEvents();
+      const rt = getRuntime(ev);
+      const old = rt.state.judges;
+      const next = {};
+      for (let i = 1; i <= judges; i++) next[i] = old[i] || { pos: 0, neg: 0 };
+      rt.state.judges = next;
+      rt.state.v++;
+      // Re-send "ready" so scoring pages rebuild their judge cards and overlays re-render.
+      for (const w of [...rt.scorers, ...rt.viewers]) {
+        sendJson(w, {
+          type: 'ready',
+          epoch: EPOCH,
+          event: { id: ev.id, name: ev.name, judges: ev.judges, expiresAt: ev.expiresAt },
+          status: { viewers: rt.viewers.size, scorers: rt.scorers.size },
+          state: rt.state,
+        });
+      }
+    }
+    return json(res, 200, { event: adminView(ev) });
+  }
+
   if (method === 'POST' && action === 'revoke') {
     const body = await readJson(req);
     ev.revoked = body.revoked !== false;
