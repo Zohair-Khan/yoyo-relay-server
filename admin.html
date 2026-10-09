@@ -211,6 +211,9 @@
 
     var actions = el('div', { class: 'actions' },
       el('button', { class: 'grey', text: 'Extend +24h', onclick: function () { act('POST', '/events/' + refs.ev.id + '/extend', { hours: 24 }); } }),
+      el('button', { class: 'grey', text: 'Free judge slots', title: 'Let judges re-pick their slots', onclick: function () {
+        if (confirm('Free every judge slot? Scoring devices will have to join again.')) act('POST', '/events/' + refs.ev.id + '/release');
+      } }),
       el('button', { class: 'grey', text: 'Reset all scores', onclick: function () {
         if (confirm('Reset every judge to 000 / 000?')) act('POST', '/events/' + refs.ev.id + '/reset');
       } }),
@@ -263,7 +266,10 @@
     r.liveLine.appendChild(el('span', { class: 'dotc' + (live.scorers > 0 ? ' on' : '') }));
     r.liveLine.appendChild(document.createTextNode('Scoring laptops: ' + live.scorers + '    '));
     r.liveLine.appendChild(el('span', { class: 'dotc' + (live.viewers > 0 ? ' on' : '') }));
-    r.liveLine.appendChild(document.createTextNode('Overlay connections: ' + live.viewers));
+    r.liveLine.appendChild(document.createTextNode('Overlay connections: ' + live.viewers + '    '));
+    var claimed = live.claimed || [];
+    r.liveLine.appendChild(document.createTextNode('Judge slots in use: ' + claimed.length + ' of ' + ev.judges
+      + (claimed.length ? ' (judge ' + claimed.join(', ') + ')' : '')));
 
     var st = live.state;
     var parts = [];

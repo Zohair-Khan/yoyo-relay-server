@@ -66,9 +66,14 @@ Optional URL add-ons (put after the URL): `?size=120` bigger text, `?pos=top` mo
 **At the judges' table (laptop with Chrome or Edge):**
 1. Plug in or pair the controllers.
 2. Open the scoring link (or go to `<server>/score` and type the code).
-3. Press a button on each controller. Each one lights up a row in the Controllers list, which tells identical controllers apart.
-4. For each judge, pick that judge's controller from the dropdown on their card.
-5. Keep this browser tab **open and in front**. Browsers pause controller input for tabs in the background or on a minimized window. The page warns you if that happens.
+3. Every judge slot for the event appears as a card. Click **Join as Judge N** on the card(s) this laptop will score. A card that says "Taken by another device" is already in use elsewhere (its score is shown read-only). Click **Leave** to give a slot back.
+4. Press a button on each controller. Each one lights up a row in the Controllers list, which tells identical controllers apart.
+5. On each of your judge cards, pick that judge's controller from the dropdown.
+6. Keep this browser tab **open and in front**. Browsers pause controller input for tabs in the background or on a minimized window. The page warns you if that happens.
+
+The same code works from several places at once (for example two judges sharing one laptop, a third judge at home). Once every judge slot is taken, nobody else can score. If a laptop drops off, it keeps its slots for 20 seconds so a quick reconnect or page refresh doesn't lose them. In the admin page, **Free judge slots** clears all slots if one gets stuck.
+
+The **Stream overlay preview** on the scoring page shows what viewers see at the bottom of the stream.
 
 Default controls: POS clicker = RB (+), RT (-), Start (reset). NEG clicker = LB (+), LT (-), Select/Back (reset). Every button can be remapped per judge under "Button mapping" on each card, and mappings are remembered on that laptop. A second button can be added to any action (useful for rapid double taps).
 
@@ -78,5 +83,6 @@ If a button press can't be recorded (connection down), the controller gives one 
 
 - Up to 4 controllers can be read by one browser at a time (a browser limit). Other USB devices that show up as gamepads (some headset receivers do) use up those slots. For more judges than that, a second laptop can open the same scoring page with the same code; every judge also has on-screen +/- buttons.
 - Each controller can only be assigned to one judge. Choosing it for a new judge moves it.
+- Only the device holding a judge slot can score for that judge; the server rejects scores for slots a device doesn't hold.
 - The server keeps the scores. If a scoring laptop reconnects, it simply picks up where it was.
 - Failed code or password attempts are rate limited per IP address (10 failures, then a 10 minute block). This is best effort.

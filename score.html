@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>Yoyo Judge Scoring</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap">
 <style>
   * { box-sizing: border-box; }
   body {
@@ -50,13 +51,35 @@
   .ident-meta { margin-left: auto; color: #888; font-size: 11px; }
   .none { color: #777; font-style: italic; font-size: 13px; }
 
-  #judgesGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+  #judgesGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .ver { font-size: 11px; color: #777; font-weight: 400; margin-left: 8px; }
+
+  /* judge slot states: free (nobody), mine (this device), taken (another device) */
+  .card.s-free .only-mine, .card.s-free .only-taken, .card.s-free .counters { display: none; }
+  .card.s-mine .only-free, .card.s-mine .only-taken { display: none; }
+  .card.s-taken .only-mine, .card.s-taken .only-free { display: none; }
+  .card.s-taken { opacity: .8; }
+  .card.s-mine { border-color: #2e7d32; }
+  .card-status { font-size: 12px; color: #999; }
+  .join-box { text-align: center; padding: 16px 0 8px; }
+  .join-box button { padding: 10px 24px; font-size: 15px; margin-bottom: 8px; }
+  .leave-btn { background: #444; font-size: 12px; padding: 4px 10px; }
+
+  /* stream overlay preview (mirrors overlay.html with default options) */
+  #pvStage { border-radius: 6px; overflow: hidden; padding-top: 34px; display: flex; flex-direction: column; justify-content: flex-end;
+    background: repeating-conic-gradient(#2b2b2b 0 25%, #212121 0 50%) 0 0 / 18px 18px; }
+  #pvBar { display: none; box-sizing: border-box; padding: 0.3em 0.6em; color: #fff; background: rgba(0,0,0,0.72);
+    font-family: 'Share Tech Mono', Consolas, 'Courier New', monospace; line-height: 1.15; text-transform: uppercase; white-space: nowrap; }
+  #pvGrid { display: grid; width: max-content; margin: 0 auto; column-gap: 1.4em; row-gap: 0.1em; justify-items: start; }
+  #pvGrid .name { opacity: 0.85; margin-right: 0.4em; }
+  .pv-note { font-size: 11px; color: #777; margin-top: 6px; }
   .card { background: #242424; border: 1px solid #333; border-radius: 10px; padding: 12px; outline: 2px solid transparent; }
   .card.flash { outline-color: #66bb6a; }
   .card.flash-err { outline-color: #ef5350; }
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
   .card-title { font-weight: 700; font-size: 16px; }
   .card-head select { flex: 1; max-width: 200px; font-size: 12px; padding: 5px 6px; }
+  .card-head .card-title { flex: 1; }
   .card-warn { color: #ffb74d; font-size: 12px; min-height: 16px; }
   .counters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0; }
   .counter { background: #1a1a1a; border-radius: 8px; padding: 8px; text-align: center; }
@@ -83,7 +106,7 @@
 <body>
 <div class="wrap">
   <div class="topbar">
-    <h1>Yoyo Judge Scoring</h1>
+    <h1>Yoyo Judge Scoring<span class="ver">v2.4</span></h1>
     <div class="pills">
       <span class="pill" id="connPill">Not connected</span>
       <span class="pill" id="overlayPill">Overlay: —</span>
@@ -122,6 +145,12 @@
         <input type="text" id="labelInput" maxlength="40" placeholder="Competitor name / division" style="width:320px">
         <button class="btn-grey" id="labelClear">Clear</button>
       </div>
+    </div>
+
+    <div class="panel">
+      <h2>Stream overlay preview</h2>
+      <div id="pvStage"><div id="pvBar"><div id="pvGrid"></div></div></div>
+      <div class="pv-note">This is what appears at the bottom of the stream (default overlay settings).</div>
     </div>
 
     <div class="panel">
@@ -175,6 +204,18 @@
     remove: function (k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
   };
 
+  var ss = {
+    get: function (k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { sessionStorage.setItem(k, v); } catch (e) { /* ignore */ } },
+    remove: function (k) { try { sessionStorage.removeItem(k); } catch (e) { /* ignore */ } },
+  };
+  // Identifies this browser tab to the server so a reconnect keeps its judge slots.
+  var clientId = ss.get('yoyo.cid');
+  if (!clientId) {
+    clientId = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+    ss.set('yoyo.cid', clientId);
+  }
+
   function fmt(n) { return (n < 0 ? '-' : '') + String(Math.abs(n)).padStart(3, '0'); }
 
   var logEl = $('log');
@@ -197,11 +238,11 @@
 
   var ACTIONS = ['pos+', 'pos-', 'neg+', 'neg-', 'pos-reset', 'neg-reset'];
   var ACTION_LABELS = { 'pos+': 'POS +', 'pos-': 'POS -', 'neg+': 'NEG +', 'neg-': 'NEG -', 'pos-reset': 'POS RESET', 'neg-reset': 'NEG RESET' };
-  var DEFAULT_MAPPING = { 'pos+': [12], 'pos-': [13], 'neg+': [14], 'neg-': [15], 'pos-reset': [9], 'neg-reset': [1] };
+  var DEFAULT_MAPPING = { 'pos+': [5], 'pos-': [7], 'neg+': [4], 'neg-': [6], 'pos-reset': [9], 'neg-reset': [8] };
   var TRIGGER_THRESHOLD = 0.5;
 
   var mappings = {};
-  try { mappings = JSON.parse(store.get('yoyo.mappings.v1') || '{}') || {}; } catch (e) { mappings = {}; }
+  try { mappings = JSON.parse(store.get('yoyo.mappings.v2') || '{}') || {}; } catch (e) { mappings = {}; }
 
   function getMapping(n) {
     if (!mappings[n]) {
@@ -210,7 +251,7 @@
     }
     return mappings[n];
   }
-  function saveMappings() { store.set('yoyo.mappings.v1', JSON.stringify(mappings)); }
+  function saveMappings() { store.set('yoyo.mappings.v2', JSON.stringify(mappings)); }
 
   var hapticMs = parseInt(store.get('yoyo.haptic'), 10);
   if (isNaN(hapticMs)) hapticMs = 50;
@@ -281,7 +322,7 @@
 
     mine.onopen = function () {
       lastMsgAt = Date.now();
-      mine.send(JSON.stringify({ type: 'hello', role: 'scorer', code: currentCode }));
+      mine.send(JSON.stringify({ type: 'hello', role: 'scorer', code: currentCode, clientId: clientId }));
     };
     mine.onmessage = function (e) {
       if (mine !== ws) return;
@@ -310,11 +351,15 @@
   }
 
   function disconnect(forget) {
+    if (forget && ws && ws.readyState === 1) {
+      mineList.forEach(function (j) { ws.send(JSON.stringify({ type: 'release', judge: j })); });
+    }
     wantConnected = false;
     connected = false;
     clearTimeout(reconnectTimer);
     if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { /* ignore */ } ws = null; }
-    if (forget) store.remove('yoyo.code');
+    if (forget) { store.remove('yoyo.code'); wanted = {}; ss.remove('yoyo.wanted'); }
+    mineList = []; takenList = [];
     $('eventArea').classList.add('hidden');
     $('connectPanel').classList.remove('hidden');
     updatePills();
@@ -330,16 +375,32 @@
         var newEvent = !evt || evt.id !== msg.event.id || evt.judges !== msg.event.judges;
         var serverRestarted = lastEpoch && lastEpoch !== msg.epoch;
         var toRestore = null;
-        if (!newEvent && serverRestarted && msg.state.v === 0 && cache && cache.eventId === msg.event.id && hasScores(cache.state)) {
+        if (!newEvent && serverRestarted && cache && cache.eventId === msg.event.id && hasScores(cache.state)) {
           toRestore = cache.state;
         }
+        var prevEvt = evt;
         evt = msg.event;
         lastEpoch = msg.epoch;
         store.set('yoyo.code', currentCode);
-        if (newEvent) { buildJudges(evt.judges); cache = null; }
+        if (newEvent) {
+          var keep = (prevEvt && prevEvt.id === evt.id) ? assignment : {};
+          buildJudges(evt.judges);
+          Object.keys(keep).forEach(function (k) { if (Number(k) <= evt.judges && keep[k] != null) assignment[k] = keep[k]; });
+          refreshSelects();
+          cache = null;
+        }
         showEvent();
         applyState(msg.state);
         viewers = msg.status ? msg.status.viewers : 0;
+        applySlots(msg.status ? msg.status.taken : [], msg.status ? msg.status.mine : [], true);
+        // Re-claim the judge slots this tab had (e.g. after a server restart).
+        loadWanted(evt.id);
+        Object.keys(wanted).forEach(function (k) {
+          var j = Number(k);
+          if (j > evt.judges) { delete wanted[k]; return; }
+          if (mineList.indexOf(j) < 0) ws.send(JSON.stringify({ type: 'claim', judge: j }));
+        });
+        saveWanted();
         if (toRestore) {
           ws.send(JSON.stringify({ type: 'restore', state: toRestore }));
           log('Server had restarted; restored scores.');
@@ -349,7 +410,20 @@
         break;
       }
       case 'state': applyState(msg.state); break;
-      case 'status': viewers = msg.viewers; break;
+      case 'status':
+        viewers = msg.viewers;
+        applySlots(msg.taken || [], msg.mine || [], false);
+        break;
+      case 'claimFailed':
+        delete wanted[msg.judge];
+        saveWanted();
+        slotNotice('Judge ' + msg.judge + ' was just taken by another device.');
+        log('Judge ' + msg.judge + ' is already taken.');
+        break;
+      case 'denied':
+        log('Server refused a score for Judge ' + msg.judge + ' (not held by this device).');
+        flash(msg.judge, false);
+        break;
       case 'pong': rtt = rtt == null ? performance.now() - msg.t : rtt * 0.7 + (performance.now() - msg.t) * 0.3; break;
       case 'tick': break;
       case 'error':
@@ -417,6 +491,74 @@
   var cardWarn = {};          // n -> text
   var remap = { active: false, judge: null, action: null, timer: null };
 
+  // Judge slots. mineList = judges this tab scores, takenList = every claimed judge.
+  var mineList = [];
+  var takenList = [];
+  var wanted = {};            // judges this tab wants to hold (re-claimed after reconnects)
+  var notice = { text: '', until: 0 };
+
+  function loadWanted(eventId) {
+    wanted = {};
+    try {
+      var o = JSON.parse(ss.get('yoyo.wanted') || 'null');
+      if (o && o.eventId === eventId && Array.isArray(o.judges)) o.judges.forEach(function (j) { wanted[j] = true; });
+    } catch (e) { wanted = {}; }
+  }
+  function saveWanted() {
+    ss.set('yoyo.wanted', JSON.stringify({ eventId: evt ? evt.id : null, judges: Object.keys(wanted).map(Number) }));
+  }
+  function slotNotice(text) {
+    notice.text = text;
+    notice.until = Date.now() + 8000;
+    updateBanners();
+  }
+
+  function applySlots(taken, mine, initial) {
+    var prev = mineList;
+    takenList = taken;
+    mineList = mine;
+    if (!initial) {
+      prev.forEach(function (j) {
+        if (mine.indexOf(j) < 0 && wanted[j]) {
+          delete wanted[j];
+          saveWanted();
+          log('Judge ' + j + ' slot was released.');
+          slotNotice('Judge ' + j + ' was released by the organizer.');
+        }
+      });
+    }
+    renderSlots();
+  }
+
+  function renderSlots() {
+    var changed = false;
+    Object.keys(ui).forEach(function (k) {
+      var n = Number(k);
+      var isMine = mineList.indexOf(n) >= 0;
+      var isTaken = !isMine && takenList.indexOf(n) >= 0;
+      ui[n].card.classList.toggle('s-mine', isMine);
+      ui[n].card.classList.toggle('s-taken', isTaken);
+      ui[n].card.classList.toggle('s-free', !isMine && !isTaken);
+      ui[n].status.textContent = isTaken ? 'Taken by another device (scores shown read-only).' : '';
+      if (!isMine && assignment[n] != null) { assignment[n] = null; changed = true; }
+    });
+    if (changed) refreshSelects();
+    updateBanners();
+  }
+
+  function joinJudge(n) {
+    if (!isHealthy()) { slotNotice('Not connected yet, try again in a moment.'); return; }
+    wanted[n] = true;
+    saveWanted();
+    ws.send(JSON.stringify({ type: 'claim', judge: n }));
+  }
+
+  function leaveJudge(n) {
+    delete wanted[n];
+    saveWanted();
+    if (isHealthy()) ws.send(JSON.stringify({ type: 'release', judge: n }));
+  }
+
   function showEvent() {
     $('connectPanel').classList.add('hidden');
     $('eventArea').classList.remove('hidden');
@@ -439,7 +581,7 @@
     return el('div', { class: 'counter' },
       el('div', { class: 'lbl', text: label }),
       valEl,
-      el('div', { class: 'cbtns' },
+      el('div', { class: 'cbtns only-mine' },
         el('button', { text: '−', title: label + ' −1', onclick: function () { manual(n, type + '-'); } }),
         el('button', { text: '+', title: label + ' +1', onclick: function () { manual(n, type + '+'); } }),
         el('button', { text: '↺', title: 'Reset ' + label, onclick: function () { manual(n, type + '-reset'); } })
@@ -453,14 +595,25 @@
     var select = el('select', { onchange: function () { onAssign(n, select.value); } });
     var warn = el('div', { class: 'card-warn' });
     var mapBox = el('div');
-    var card = el('div', { class: 'card' },
-      el('div', { class: 'card-head' }, el('div', { class: 'card-title', text: 'Judge ' + n }), select),
+    select.className = 'only-mine';
+    warn.className = 'card-warn only-mine';
+    var status = el('div', { class: 'card-status only-taken' });
+    var card = el('div', { class: 'card s-free' },
+      el('div', { class: 'card-head' },
+        el('div', { class: 'card-title', text: 'Judge ' + n }),
+        select,
+        el('button', { class: 'leave-btn only-mine', text: 'Leave', title: 'Give this judge slot back',
+          onclick: function () { leaveJudge(n); } })),
+      el('div', { class: 'join-box only-free' },
+        el('button', { text: 'Join as Judge ' + n, onclick: function () { joinJudge(n); } }),
+        el('div', { class: 'card-status', text: 'Score as this judge on this device.' })),
+      status,
       warn,
       el('div', { class: 'counters' }, counter('POS', posEl, 'pos', n), counter('NEG', negEl, 'neg', n)),
-      el('details', { class: 'map' }, el('summary', { text: 'Button mapping' }), mapBox)
+      el('details', { class: 'map only-mine' }, el('summary', { text: 'Button mapping' }), mapBox)
     );
     grid.appendChild(card);
-    ui[n] = { card: card, posEl: posEl, negEl: negEl, select: select, warn: warn, mapBox: mapBox };
+    ui[n] = { card: card, posEl: posEl, negEl: negEl, select: select, warn: warn, mapBox: mapBox, status: status };
     renderMapping(n);
   }
 
@@ -475,7 +628,52 @@
     }
     var li = $('labelInput');
     if (document.activeElement !== li) li.value = state.label || '';
+    pvState = state;
+    renderPreview();
   }
+
+  // ------------------------------------------------- stream overlay preview
+  // Same layout and number formatting as overlay.html (default options).
+  var pvState = null;
+  function pvPad3(n) { return String(Math.abs(Math.round(n))).padStart(3, '0'); }
+  function pvPad1(n) { return Math.abs(n).toFixed(1).padStart(5, '0'); }
+  function pvCell(name, parts) {
+    var d = el('div', { class: 'cell' });
+    if (name) d.appendChild(el('span', { class: 'name', text: name }));
+    parts.forEach(function (t, i) {
+      if (i) d.appendChild(document.createTextNode(' '));
+      d.appendChild(el('span', { text: t }));
+    });
+    return d;
+  }
+  function renderPreview() {
+    var stage = $('pvStage'), bar = $('pvBar'), grid = $('pvGrid');
+    if (!evt || !pvState || !stage.clientWidth) { bar.style.display = 'none'; return; }
+    var n = evt.judges, cells = [], sumPos = 0, sumNeg = 0;
+    if (pvState.label) cells.push(pvCell(null, [pvState.label]));
+    for (var i = 1; i <= n; i++) {
+      var j = pvState.judges[i] || { pos: 0, neg: 0 };
+      sumPos += j.pos; sumNeg += j.neg;
+      cells.push(pvCell('JDG' + i + ':', [(j.pos < 0 ? '-' : '+') + pvPad3(j.pos), (j.neg < 0 ? '+' : '-') + pvPad3(j.neg)]));
+    }
+    var scoreCells = n;
+    if (n > 1) {
+      cells.push(pvCell('AVG:', [(sumPos < 0 ? '-' : '+') + pvPad1(sumPos / n), (sumNeg < 0 ? '+' : '-') + pvPad1(sumNeg / n)]));
+      scoreCells++;
+    }
+    var rows = scoreCells <= 5 ? 1 : 2;
+    grid.style.gridTemplateColumns = 'repeat(' + Math.ceil(cells.length / rows) + ', max-content)';
+    grid.textContent = '';
+    cells.forEach(function (c) { grid.appendChild(c); });
+    bar.style.display = 'block';
+    var fs = stage.clientWidth * 0.0155;
+    bar.style.fontSize = fs + 'px';
+    for (var k = 0; k < 40 && grid.getBoundingClientRect().width > stage.clientWidth * 0.985 && fs > 8; k++) {
+      fs *= 0.95;
+      bar.style.fontSize = fs + 'px';
+    }
+  }
+  window.addEventListener('resize', renderPreview);
 
   function flash(n, ok) {
     var card = ui[n] && ui[n].card;
@@ -487,7 +685,7 @@
 
   // ------------------------------------------------------------- actions
   function sendAction(judge, action) {
-    if (!isHealthy()) return false;
+    if (!isHealthy() || mineList.indexOf(judge) < 0) return false;
     ws.send(JSON.stringify({ type: 'action', judge: judge, action: action }));
     return true;
   }
@@ -730,11 +928,19 @@
     if (remap.active) {
       items.push(['warn', 'Listening for a button for Judge ' + remap.judge + ' ' + ACTION_LABELS[remap.action] + '… scoring is paused for a few seconds.']);
     }
+    if (notice.text && Date.now() < notice.until) items.push(['warn', notice.text]);
     if (connected && evt) {
-      var missing = [];
-      for (var n = 1; n <= evt.judges; n++) if (assignment[n] == null) missing.push(n);
-      if (missing.length) {
-        items.push(['info', 'Judges without a controller: ' + missing.join(', ') + ' (on-screen buttons still work).']);
+      if (!mineList.length) {
+        if (takenList.length >= evt.judges) {
+          items.push(['err', 'All ' + evt.judges + ' judge slots are already in use on other devices. Ask the organizer to add a judge or free a slot.']);
+        } else {
+          items.push(['info', 'Choose your judge: click "Join" on the judge card(s) you will score on this device.']);
+        }
+      } else {
+        var missing = mineList.filter(function (n) { return assignment[n] == null; });
+        if (missing.length) {
+          items.push(['info', 'Your judges without a controller: ' + missing.join(', ') + ' (on-screen buttons still work).']);
+        }
       }
     }
     box.textContent = '';

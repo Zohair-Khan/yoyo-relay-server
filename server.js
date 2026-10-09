@@ -40,7 +40,8 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const EVENTS_FILE = path.join(DATA_DIR, 'events.json');
 const EPOCH = crypto.randomBytes(4).toString('hex'); // changes every process start
 
-const MAX_SCORERS_PER_EVENT = 4;
+const MAX_SCORERS_PER_EVENT = 4; // minimum; the real cap is max(this, judges + 2)
+const CLAIM_GRACE_MS = 20000;    // a dropped laptop keeps its judge slots this long
 const MAX_VIEWERS_PER_EVENT = 10;
 const MAX_SCORE = 999;
 const TICK_MS = 3000;   // app-level heartbeat so browsers can detect dead connections
@@ -148,7 +149,7 @@ function blankState(n) {
 function getRuntime(ev) {
   let rt = runtimes.get(ev.id);
   if (!rt) {
-    rt = { state: blankState(ev.judges), scorers: new Set(), viewers: new Set() };
+    rt = { state: blankState(ev.judges), scorers: new Set(), viewers: new Set(), claims: new Map() };
     runtimes.set(ev.id, rt);
   }
   return rt;
@@ -169,14 +170,21 @@ function adminView(ev) {
     live: {
       scorers: rt ? rt.scorers.size : 0,
       viewers: rt ? rt.viewers.size : 0,
+      claimed: rt ? [...rt.claims.keys()].sort((a, b) => a - b) : [],
       state: rt ? rt.state : blankState(ev.judges),
     },
   };
 }
 
+function clearClaims(rt) {
+  for (const c of rt.claims.values()) clearTimeout(c.timer);
+  rt.claims.clear();
+}
+
 function kickEvent(ev, message) {
   const rt = runtimes.get(ev.id);
   if (!rt) return;
+  clearClaims(rt);
   for (const w of [...rt.scorers, ...rt.viewers]) {
     sendJson(w, { type: 'error', code: 'revoked', message, fatal: true });
     try { w.close(4003, 'event closed'); } catch (e) { /* ignore */ }
@@ -261,9 +269,17 @@ function broadcastState(rt) {
   rt.viewers.forEach((w) => sendSafe(w, s));
 }
 
+// Judge slots: "taken" = every claimed judge number, "mine" = the ones held by
+// the recipient's device (matched by its clientId, so a reconnect keeps them).
+function statusFor(rt, ws) {
+  const taken = [...rt.claims.keys()].sort((a, b) => a - b);
+  const cid = ws && ws.ctx ? ws.ctx.clientId : null;
+  const mine = taken.filter((j) => rt.claims.get(j).clientId === cid);
+  return { viewers: rt.viewers.size, scorers: rt.scorers.size, taken, mine };
+}
+
 function broadcastStatus(rt) {
-  const s = JSON.stringify({ type: 'status', viewers: rt.viewers.size, scorers: rt.scorers.size });
-  rt.scorers.forEach((w) => sendSafe(w, s));
+  rt.scorers.forEach((w) => sendJson(w, Object.assign({ type: 'status' }, statusFor(rt, w))));
 }
 
 // ---------------------------------------------------------------- HTTP part
@@ -393,13 +409,16 @@ async function handleApi(req, res, url) {
       for (let i = 1; i <= judges; i++) next[i] = old[i] || { pos: 0, neg: 0 };
       rt.state.judges = next;
       rt.state.v++;
+      for (const [j, c] of [...rt.claims]) {
+        if (j > judges) { clearTimeout(c.timer); rt.claims.delete(j); }
+      }
       // Re-send "ready" so scoring pages rebuild their judge cards and overlays re-render.
       for (const w of [...rt.scorers, ...rt.viewers]) {
         sendJson(w, {
           type: 'ready',
           epoch: EPOCH,
           event: { id: ev.id, name: ev.name, judges: ev.judges, expiresAt: ev.expiresAt },
-          status: { viewers: rt.viewers.size, scorers: rt.scorers.size },
+          status: statusFor(rt, w),
           state: rt.state,
         });
       }
@@ -421,6 +440,13 @@ async function handleApi(req, res, url) {
     ev.viewKey = newViewKey();
     reindex();
     saveEvents();
+    return json(res, 200, { event: adminView(ev) });
+  }
+
+  if (method === 'POST' && action === 'release') {
+    const rt = getRuntime(ev);
+    clearClaims(rt);
+    broadcastStatus(rt);
     return json(res, 200, { event: adminView(ev) });
   }
 
@@ -501,16 +527,24 @@ function handleHello(ws, msg) {
 
   const rt = getRuntime(ev);
   const set = msg.role === 'scorer' ? rt.scorers : rt.viewers;
-  const cap = msg.role === 'scorer' ? MAX_SCORERS_PER_EVENT : MAX_VIEWERS_PER_EVENT;
+  const cap = msg.role === 'scorer' ? Math.max(MAX_SCORERS_PER_EVENT, ev.judges + 2) : MAX_VIEWERS_PER_EVENT;
   if (set.size >= cap) return fail(ws, 'full', 'Too many connections for this event. Retrying…', 4009, false);
 
-  ws.ctx = { ev, rt, role: msg.role };
+  const clientId = (typeof msg.clientId === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(msg.clientId))
+    ? msg.clientId : crypto.randomBytes(8).toString('hex');
+  ws.ctx = { ev, rt, role: msg.role, clientId };
   set.add(ws);
+  if (msg.role === 'scorer') {
+    // A returning device picks its judge slots back up.
+    for (const c of rt.claims.values()) {
+      if (c.clientId === clientId) { clearTimeout(c.timer); c.timer = null; c.ws = ws; }
+    }
+  }
   sendJson(ws, {
     type: 'ready',
     epoch: EPOCH,
     event: { id: ev.id, name: ev.name, judges: ev.judges, expiresAt: ev.expiresAt },
-    status: { viewers: rt.viewers.size, scorers: rt.scorers.size },
+    status: statusFor(rt, ws),
     state: rt.state,
   });
   broadcastStatus(rt);
@@ -524,12 +558,34 @@ function handleMessage(ws, msg) {
   if (role !== 'scorer') return;
 
   switch (msg.type) {
-    case 'action':
-      if (Number.isInteger(msg.judge) && typeof msg.action === 'string'
-          && applyAction(rt, msg.judge, msg.action)) {
-        broadcastState(rt);
+    case 'claim': {
+      const j = msg.judge;
+      if (!Number.isInteger(j) || j < 1 || j > ev.judges) return;
+      const c = rt.claims.get(j);
+      if (c && c.clientId !== ws.ctx.clientId) { sendJson(ws, { type: 'claimFailed', judge: j }); return; }
+      if (c) { clearTimeout(c.timer); c.timer = null; c.ws = ws; }
+      else rt.claims.set(j, { clientId: ws.ctx.clientId, ws, timer: null });
+      broadcastStatus(rt);
+      break;
+    }
+
+    case 'release': {
+      const c = rt.claims.get(msg.judge);
+      if (c && c.clientId === ws.ctx.clientId) {
+        clearTimeout(c.timer);
+        rt.claims.delete(msg.judge);
+        broadcastStatus(rt);
       }
       break;
+    }
+
+    case 'action': {
+      if (!Number.isInteger(msg.judge) || typeof msg.action !== 'string') break;
+      const c = rt.claims.get(msg.judge);
+      if (!c || c.clientId !== ws.ctx.clientId) { sendJson(ws, { type: 'denied', judge: msg.judge }); break; }
+      if (applyAction(rt, msg.judge, msg.action)) broadcastState(rt);
+      break;
+    }
 
     case 'label':
       rt.state.label = cleanLabel(msg.text);
@@ -538,19 +594,26 @@ function handleMessage(ws, msg) {
       break;
 
     case 'restore': {
-      // Only accepted while the event's state is still pristine (fresh server
-      // start). Lets a scoring page re-seed scores after a server restart.
-      if (rt.state.v !== 0 || !msg.state || typeof msg.state.judges !== 'object' || !msg.state.judges) return;
-      for (let i = 1; i <= ev.judges; i++) {
+      // After a server restart a scoring page re-seeds the scores of the judges
+      // it holds. Only judges the sender holds, and only if still 000/000.
+      if (!msg.state || typeof msg.state.judges !== 'object' || !msg.state.judges) return;
+      let changed = false;
+      for (const [i, c] of rt.claims) {
+        if (c.clientId !== ws.ctx.clientId) continue;
+        const cur = rt.state.judges[i];
         const j = msg.state.judges[i];
-        if (j && Number.isFinite(j.pos) && Number.isFinite(j.neg)) {
-          rt.state.judges[i].pos = clampScore(Math.round(j.pos));
-          rt.state.judges[i].neg = clampScore(Math.round(j.neg));
+        if (!cur || !j || cur.pos !== 0 || cur.neg !== 0) continue;
+        if (Number.isFinite(j.pos) && Number.isFinite(j.neg)) {
+          cur.pos = clampScore(Math.round(j.pos));
+          cur.neg = clampScore(Math.round(j.neg));
+          changed = true;
         }
       }
-      if (typeof msg.state.label === 'string') rt.state.label = cleanLabel(msg.state.label);
-      rt.state.v = 1;
-      broadcastState(rt);
+      if (!rt.state.label && typeof msg.state.label === 'string' && msg.state.label) {
+        rt.state.label = cleanLabel(msg.state.label);
+        changed = true;
+      }
+      if (changed) { rt.state.v++; broadcastState(rt); }
       break;
     }
     default:
@@ -594,6 +657,17 @@ function detach(ws) {
   if (ws.ctx) {
     const { rt, role } = ws.ctx;
     (role === 'scorer' ? rt.scorers : rt.viewers).delete(ws);
+    // Keep this device's judge slots for a short grace period so a quick
+    // reconnect (wifi blip, page refresh) doesn't lose them.
+    for (const [j, c] of rt.claims) {
+      if (c.ws !== ws) continue;
+      c.ws = null;
+      clearTimeout(c.timer);
+      c.timer = setTimeout(() => {
+        if (rt.claims.get(j) === c) { rt.claims.delete(j); broadcastStatus(rt); }
+      }, CLAIM_GRACE_MS);
+      if (c.timer.unref) c.timer.unref();
+    }
     broadcastStatus(rt);
   }
   if (ws.legacy) {
