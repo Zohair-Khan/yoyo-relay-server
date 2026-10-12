@@ -1,0 +1,10 @@
+# Dependencies (npm install recreates these)
+node_modules/
+
+# Lockfile
+package-lock.json
+
+# Local event data from running the server on your own computer
+data/
+
+.impeccable/

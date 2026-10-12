@@ -5,56 +5,106 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
-<title>Yoyo Scoring Admin</title>
+<title>Admin · Yo-Yo Event Management</title>
 <style>
   * { box-sizing: border-box; }
   body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #1a1a1a; color: #eee; margin: 0; padding: 16px; }
   .wrap { max-width: 1000px; margin: 0 auto; }
   h1 { font-size: 20px; margin: 0 0 12px 0; }
+  h1 .page-name { color: #999; font-weight: 600; }
+  .field .k small { display: block; color: #8f8f8f; font-size: 11px; margin-top: 2px; }
   .panel { background: #242424; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
   .panel h2 { font-size: 14px; margin: 0 0 10px 0; color: #ccc; }
   .hidden { display: none !important; }
   label { display: block; font-size: 12px; color: #aaa; margin-bottom: 4px; }
   input, select { padding: 8px 10px; border-radius: 6px; border: 1px solid #3a3a3a; background: #1a1a1a; color: #eee; font-size: 14px; }
+  ::placeholder { color: #8f8f8f; opacity: 1; }
   button { padding: 7px 12px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; background: #1565c0; color: #fff; }
   button.grey { background: #444; }
   button.red { background: #c62828; }
   button.green { background: #2e7d32; }
+  button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid #64b5f6; outline-offset: 2px; }
+  button:not(:disabled):hover { filter: brightness(1.15); }
+  button:not(:disabled):active { filter: brightness(.9); }
+  button:disabled { opacity: .6; cursor: progress; }
   .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
   .msg { font-size: 13px; margin-top: 8px; color: #ef9a9a; min-height: 18px; }
-  .ev { border: 1px solid #333; }
-  .ev-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-  .ev-name { font-size: 17px; font-weight: 700; }
-  .badge { padding: 3px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; background: #444; }
+  .msg.ok { color: #a5d6a7; }
+  .msg:empty { display: none; }
+  /* spacing scale (4px base), shared with the scoring page */
+  :root { --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; }
+
+  /* event card: collapsible; open while active, folded when expired or disabled */
+  .ev { border: 1px solid #333; padding: 0; }
+  .ev > summary { list-style: none; cursor: pointer; padding: var(--s4); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--s1) var(--s3); }
+  .ev > summary::-webkit-details-marker { display: none; }
+  .ev > summary::before { content: ''; width: 7px; height: 7px; margin: 0 2px; border-right: 2px solid #999; border-bottom: 2px solid #999; transform: rotate(-45deg); transition: transform .15s ease-out; }
+  .ev[open] > summary::before { transform: rotate(45deg); }
+  .ev > summary .meta { grid-column: 2 / -1; margin: 0; }
+  .ev .ev-name { font-size: 17px; font-weight: 700; margin: 0; color: #eee; overflow-wrap: anywhere; }
+  .ev-body { padding: 0 var(--s4) var(--s4); display: flex; flex-direction: column; gap: var(--s5); }
+  .grp-title { font-size: 13px; font-weight: 600; color: #ccc; margin: 0 0 var(--s2); }
+  .badge { padding: 3px 9px; border-radius: 10px; font-size: 12px; font-weight: 700; background: #444; white-space: nowrap; }
   .badge.active { background: #2e7d32; }
   .badge.expired { background: #8a6d00; }
   .badge.revoked { background: #c62828; }
   .meta { font-size: 12px; color: #999; margin: 4px 0 10px 0; }
-  .field { display: flex; align-items: center; gap: 8px; margin: 5px 0; flex-wrap: wrap; }
-  .field .k { width: 110px; font-size: 12px; color: #999; flex-shrink: 0; }
-  .field .v { flex: 1; min-width: 200px; font-family: Consolas, monospace; font-size: 13px; word-break: break-all; background: #1a1a1a; padding: 6px 8px; border-radius: 6px; }
-  .live { margin-top: 10px; padding: 8px; background: #1a1a1a; border-radius: 6px; font-size: 13px; }
-  .live .scores { font-family: Consolas, monospace; font-size: 13px; margin-top: 4px; color: #bbb; white-space: pre-wrap; }
-  .dotc { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #555; margin-right: 5px; }
+  .meta strong { color: #ddd; font-weight: 600; }
+  /* handoff fields: label · value · buttons, aligned across rows */
+  .field { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; align-items: center; gap: var(--s2); margin-bottom: var(--s2); }
+  .k { font-size: 12px; color: #999; margin: 0; }
+  .field .v { min-width: 0; font-family: Consolas, monospace; font-size: 13px; word-break: break-all; background: #1a1a1a; padding: 6px 8px; border-radius: 6px; }
+  .field .btns { display: flex; gap: var(--s2); }
+  details.obs > summary { cursor: pointer; font-size: 12px; color: #aaa; margin-top: var(--s1); }
+  details.obs .hint { margin-top: var(--s2); line-height: 1.5; }
+
+  /* live status: what you check most during an event */
+  .live { padding: var(--s3); background: #1a1a1a; border-radius: 6px; font-size: 13px; }
+  .live-line { display: flex; flex-wrap: wrap; gap: var(--s2); }
+  .live-line > span { display: inline-flex; align-items: center; padding: 4px 10px; border: 1px solid #333; border-radius: 12px; white-space: nowrap; }
+  .live .scores { font-family: Consolas, monospace; font-size: 13px; margin-top: var(--s3); color: #bbb; white-space: pre-wrap; }
+  .live .grace { font-size: 12px; color: #ffd54f; margin-top: var(--s2); }
+  .dotc { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #555; margin-right: 6px; }
   .dotc.on { background: #66bb6a; }
-  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-  .hint { font-size: 12px; color: #888; margin-top: 4px; }
+
+  /* controls: routine first, irreversible separated below a divider */
+  .controls { display: flex; flex-direction: column; gap: var(--s3); }
+  .actions { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; }
+  .judges-ctl { display: flex; align-items: center; gap: var(--s2); margin-right: var(--s3); }
+  .judges-ctl .k { width: auto; }
+  .actions.danger { padding-top: var(--s3); border-top: 1px solid #333; }
+  .danger-label { font-size: 12px; color: #999; margin-right: var(--s1); }
+  .hint { font-size: 12px; color: #999; margin-top: 4px; }
+  .hint code { font-family: Consolas, monospace; color: #ccc; }
+  .confirm { padding: 10px 12px; border-radius: 6px; background: #4a1c1c; border: 1px solid #ef5350; color: #ffd6d6; font-size: 13px; }
+  .confirm p { margin: 0 0 8px 0; line-height: 1.45; }
+  .card-msg { font-size: 13px; color: #ef9a9a; }
+  .card-msg.ok { color: #a5d6a7; }
+  .card-msg:empty { display: none; }
+  @media (max-width: 600px) {
+    .field { grid-template-columns: minmax(0, 1fr); gap: var(--s1); margin-bottom: var(--s3); }
+    #newName { width: 100% !important; }
+    .row > div:first-child { flex: 1 1 100%; }
+  }
+  #staleBanner { padding: 10px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-bottom: 14px; background: #4a3600; border: 1px solid #f9a825; color: #ffd54f; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Yoyo Scoring Admin</h1>
+  <h1>Yo-Yo Event Management <span class="page-name">· Admin</span></h1>
 
   <div class="panel" id="loginPanel">
-    <h2>Admin password</h2>
+    <h2>Sign in</h2>
     <div class="row">
-      <input type="password" id="pw" autocomplete="current-password" style="width:260px">
+      <div><label for="pw">Admin password</label><input type="password" id="pw" autocomplete="current-password" style="width:260px"></div>
       <button id="loginBtn">Sign in</button>
     </div>
-    <div class="msg" id="loginMsg"></div>
+    <div class="msg" id="loginMsg" role="alert"></div>
   </div>
 
   <div id="mainArea" class="hidden">
+    <div id="staleBanner" class="hidden" role="alert"></div>
+
     <div class="panel">
       <h2>Create an event</h2>
       <div class="row">
@@ -68,11 +118,12 @@
             <option value="720">30 days</option>
           </select>
         </div>
-        <button class="green" id="createBtn">Create</button>
+        <button class="green" id="createBtn">Create event</button>
       </div>
-      <div class="msg" id="createMsg"></div>
+      <div class="msg" id="createMsg" role="status"></div>
     </div>
 
+    <div class="hint hidden" id="emptyHint">No events yet. Create one above, then send the client its scoring code and overlay URL.</div>
     <div id="eventList"></div>
     <div class="hint" id="updated"></div>
   </div>
@@ -106,19 +157,30 @@
   var timer = null;
   var judgeOptionsBuilt = false;
   var maxJudges = 8;
+  var lastOk = 0;      // time of the last successful refresh
+
+  var NET_ERROR = "Couldn't reach the server. Check your connection and try again.";
 
   function api(method, path, body) {
     return fetch('/api/admin' + path, {
       method: method,
       headers: { 'Authorization': 'Bearer ' + password, 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
+    }).catch(function () {
+      var err = new Error(NET_ERROR); err.network = true; throw err;
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (data) {
-        if (!r.ok) { var err = new Error(data.error || ('HTTP ' + r.status)); err.status = r.status; throw err; }
+        if (!r.ok) { var err = new Error(data.error || ('The server answered with error ' + r.status + '.')); err.status = r.status; throw err; }
         return data;
       });
     });
   }
+
+  function fmtTime(t) {
+    try { return new Date(t).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); }
+    catch (e) { return new Date(t).toLocaleString(); }
+  }
+  function judgeRange(a, b) { return a === b ? 'Judge ' + a : 'Judges ' + a + '–' + b; }
 
   function showLogin(msg) {
     $('mainArea').classList.add('hidden');
@@ -147,133 +209,282 @@
         judgeOptionsBuilt = true;
       }
       maxJudges = data.maxJudges;
+      lastOk = Date.now();
       showMain();
+      $('staleBanner').classList.add('hidden');
       renderList(data.events);
-      $('updated').textContent = 'Updated ' + new Date().toLocaleTimeString() + ' (refreshes every 2 seconds)';
+      $('updated').textContent = 'Updated ' + new Date().toLocaleTimeString() + ' · refreshes every 2 seconds';
     }).catch(function (err) {
       if (err.status === 401 || err.status === 503 || err.status === 429) {
         sessionStorage.removeItem('yoyo.admin');
         password = '';
         showLogin(err.message);
+      } else if (!lastOk) {
+        showLogin(err.message);
       } else {
-        $('updated').textContent = 'Connection problem: ' + err.message;
+        var b = $('staleBanner');
+        b.textContent = "Can't reach the server, so the connection status and scores below may be out of date (last updated "
+          + new Date(lastOk).toLocaleTimeString() + '). Retrying every 2 seconds.'
+          + (err.network ? '' : ' Server said: ' + err.message);
+        b.classList.remove('hidden');
       }
     }).then(function () { refreshing = false; });
   }
 
   function fmtScore(n, plus) { return (n < 0 ? (plus ? '-' : '+') : (plus ? '+' : '-')) + String(Math.abs(n)).padStart(3, '0'); }
 
-  function copy(text, btn) {
-    var done = function () { var t = btn.textContent; btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = t; }, 1200); };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () { window.prompt('Copy this:', text); });
-    else window.prompt('Copy this:', text);
+  // Copies to the clipboard; if the browser refuses, selects the value so Ctrl+C works.
+  function copy(text, btn, valueEl) {
+    var t = btn.dataset.label || (btn.dataset.label = btn.textContent);
+    var say = function (msg) { btn.textContent = msg; clearTimeout(btn._t); btn._t = setTimeout(function () { btn.textContent = t; }, 1600); };
+    var fallback = function () {
+      var range = document.createRange();
+      range.selectNodeContents(valueEl);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      say('Press Ctrl+C');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { say('Copied'); }, fallback);
+    else fallback();
   }
 
   function field(label, valueEl, buttons) {
-    var row = el('div', { class: 'field' }, el('span', { class: 'k', text: label }), valueEl);
-    (buttons || []).forEach(function (b) { row.appendChild(b); });
-    return row;
+    var btns = el('div', { class: 'btns' });
+    (buttons || []).forEach(function (b) { btns.appendChild(b); });
+    var k = typeof label === 'string' ? el('span', { class: 'k', text: label }) : label;
+    k.classList.add('k');
+    return el('div', { class: 'field' }, k, valueEl, btns);
+  }
+
+  // Inline confirm inside the event card: says what will happen, names the action on its button.
+  function askConfirm(card, message, actionLabel, onYes, onNo) {
+    var r = card.refs;
+    r.confirm.textContent = '';
+    var finish = function () { r.confirm.classList.add('hidden'); r.confirm.textContent = ''; };
+    var yes = el('button', { class: 'red', text: actionLabel, onclick: function () { finish(); onYes(); } });
+    var no = el('button', { class: 'grey', text: 'Cancel', onclick: function () { finish(); if (onNo) onNo(); } });
+    r.confirm.appendChild(el('p', { text: message }));
+    r.confirm.appendChild(el('div', { class: 'row' }, yes, no));
+    r.confirm.classList.remove('hidden');
+    r.msg.textContent = '';
+    yes.focus();
   }
 
   function buildCard(ev) {
     var refs = {};
-    refs.name = el('span', { class: 'ev-name' });
+    var card = { refs: refs };
+    var label = function () { return '“' + refs.ev.name + '”'; };
+    refs.name = el('h2', { class: 'ev-name' });
     refs.badge = el('span', { class: 'badge' });
     refs.meta = el('div', { class: 'meta' });
     refs.code = el('div', { class: 'v' });
     refs.score = el('div', { class: 'v' });
     refs.overlay = el('div', { class: 'v' });
+    refs.hub = el('div', { class: 'v' });
+    refs.music = el('div', { class: 'v' });
+    refs.timer = el('div', { class: 'v' });
     refs.live = el('div', { class: 'live' });
-    refs.liveLine = el('div');
+    refs.liveLine = el('div', { class: 'live-line' });
+    refs.grace = el('div', { class: 'grace hidden' });
     refs.liveScores = el('div', { class: 'scores' });
     refs.live.appendChild(refs.liveLine);
+    refs.live.appendChild(refs.grace);
     refs.live.appendChild(refs.liveScores);
+    refs.confirm = el('div', { class: 'confirm hidden', role: 'alert' });
+    refs.msg = el('div', { class: 'card-msg', role: 'status' });
 
-    var copyCode = el('button', { class: 'grey', text: 'Copy', onclick: function () { copy(refs.ev.scorerCode, copyCode); } });
-    var copyScore = el('button', { class: 'grey', text: 'Copy', onclick: function () { copy(refs.scoreUrl, copyScore); } });
-    var openScore = el('button', { class: 'grey', text: 'Open', onclick: function () { window.open(refs.scoreUrl, '_blank'); } });
-    var copyOverlay = el('button', { class: 'grey', text: 'Copy', onclick: function () { copy(refs.overlayUrl, copyOverlay); } });
-    var previewOverlay = el('button', { class: 'grey', text: 'Preview', onclick: function () { window.open(refs.overlayUrl + '?debug=1', '_blank'); } });
+    var copyCode = el('button', { class: 'grey', text: 'Copy', 'aria-label': 'Copy event code', onclick: function () { copy(refs.ev.scorerCode, copyCode, refs.code); } });
+    var copyHub = el('button', { class: 'grey', text: 'Copy', 'aria-label': 'Copy event page link', onclick: function () { copy(refs.hubUrl, copyHub, refs.hub); } });
+    var openHub = el('button', { class: 'grey', text: 'Open', 'aria-label': 'Open the event page', onclick: function () { window.open(refs.hubUrl, '_blank'); } });
+    var copyMusic = el('button', { class: 'grey', text: 'Copy', 'aria-label': 'Copy music page link', onclick: function () { copy(refs.musicUrl, copyMusic, refs.music); } });
+    var openMusic = el('button', { class: 'grey', text: 'Open', 'aria-label': 'Open the music page', onclick: function () { window.open(refs.musicUrl, '_blank'); } });
+    var copyTimer = el('button', { class: 'grey', text: 'Copy', 'aria-label': 'Copy timer display link', onclick: function () { copy(refs.timerUrl, copyTimer, refs.timer); } });
+    var openTimer = el('button', { class: 'grey', text: 'Open', 'aria-label': 'Open the timer display', onclick: function () { window.open(refs.timerUrl, '_blank'); } });
+    var copyScore = el('button', { class: 'grey', text: 'Copy', 'aria-label': 'Copy judging page link', onclick: function () { copy(refs.scoreUrl, copyScore, refs.score); } });
+    var openScore = el('button', { class: 'grey', text: 'Open', 'aria-label': 'Open the judging page', onclick: function () { window.open(refs.scoreUrl, '_blank'); } });
+    var copyOverlay = el('button', { class: 'grey', text: 'Copy', 'aria-label': 'Copy overlay URL', onclick: function () { copy(refs.overlayUrl, copyOverlay, refs.overlay); } });
+    var previewOverlay = el('button', { class: 'grey', text: 'Preview', 'aria-label': 'Preview the overlay', title: 'Opens the overlay with a grey background and its connection status',
+      onclick: function () { window.open(refs.overlayUrl + '?debug=1', '_blank'); } });
 
-    refs.judgeSel = el('select', { onchange: function () {
+    var selId = 'judges-' + ev.id;
+    refs.judgeSel = el('select', { id: selId, onchange: function () {
       var n = Number(refs.judgeSel.value);
-      if (n === refs.ev.judges) return;
-      var msg = n < refs.ev.judges
-        ? 'Reduce to ' + n + ' judges? Scores for the removed judges are discarded.'
-        : 'Change to ' + n + ' judges?';
-      if (!confirm(msg)) { refs.judgeSel.value = String(refs.ev.judges); return; }
-      act('POST', '/events/' + refs.ev.id + '/judges', { judges: n });
+      var cur = refs.ev.judges;
+      if (n === cur) return;
+      var msg = n < cur
+        ? 'Change ' + label() + ' to ' + n + ' judges? ' + judgeRange(n + 1, cur) + ' and their scores are removed, and any laptop scoring as them loses that judge.'
+        : 'Change ' + label() + ' to ' + n + ' judges? ' + judgeRange(cur + 1, n) + (n - cur === 1 ? ' is' : ' are') + ' added at 000 / 000. Scoring pages update on their own.';
+      askConfirm(card, msg, 'Change to ' + n + ' judges',
+        function () { act(card, 'change the number of judges', 'POST', '/events/' + refs.ev.id + '/judges', { judges: n }); },
+        function () { refs.judgeSel.value = String(refs.ev.judges); });
     } });
     for (var jn = 1; jn <= maxJudges; jn++) refs.judgeSel.appendChild(el('option', { value: String(jn), text: String(jn) }));
-    var judgeRow = el('div', { class: 'actions' }, el('span', { class: 'k', text: 'Judges' }), refs.judgeSel);
+    var judgeCtl = el('div', { class: 'judges-ctl' }, el('label', { class: 'k', for: selId, text: 'Number of judges' }), refs.judgeSel);
 
     refs.revokeBtn = el('button', { class: 'grey', onclick: function () {
-      var revoke = !refs.ev.revoked;
-      if (revoke && !confirm('Disable this event? Connected scoring pages and overlays will be disconnected.')) return;
-      act('POST', '/events/' + refs.ev.id + '/revoke', { revoked: revoke });
+      if (refs.ev.revoked) {
+        act(card, 'enable the event', 'POST', '/events/' + refs.ev.id + '/revoke', { revoked: false }, 'Enabled. The same codes work again.');
+        return;
+      }
+      askConfirm(card, 'Disable ' + label() + '? Scoring laptops and the overlay disconnect now and can’t reconnect until you enable it again. '
+        + 'The overlay on stream stays frozen on the last scores. The codes stay the same.', 'Disable event',
+        function () { act(card, 'disable the event', 'POST', '/events/' + refs.ev.id + '/revoke', { revoked: true }); });
     } });
 
-    var actions = el('div', { class: 'actions' },
-      el('button', { class: 'grey', text: 'Extend +24h', onclick: function () { act('POST', '/events/' + refs.ev.id + '/extend', { hours: 24 }); } }),
-      el('button', { class: 'grey', text: 'Free judge slots', title: 'Let judges re-pick their slots', onclick: function () {
-        if (confirm('Free every judge slot? Scoring devices will have to join again.')) act('POST', '/events/' + refs.ev.id + '/release');
+    // Every routine's recorded clicks, with each judge's real seat and the number they appeared as.
+    refs.csvBtn = el('button', { class: 'grey', type: 'button', text: 'Download clicks (CSV)', onclick: function () {
+      var btn = refs.csvBtn;
+      if (btn.disabled) return;
+      btn.disabled = true;
+      fetch('/api/admin/events/' + refs.ev.id + '/recordings', { headers: { Authorization: 'Bearer ' + password } })
+        .then(function (r) { if (!r.ok) throw new Error('The server answered with error ' + r.status + '.'); return r.blob(); })
+        .then(function (b) {
+          var a = el('a', { href: URL.createObjectURL(b), download: 'clicks-' + refs.ev.name.replace(/[^A-Za-z0-9]+/g, '-').toLowerCase() + '.csv' });
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+        })
+        .catch(function (err) { refs.msg.className = 'card-msg'; refs.msg.textContent = 'Couldn’t download the clicks. ' + (err instanceof TypeError ? NET_ERROR : err.message); })
+        .then(function () { btn.disabled = false; });
+    } });
+    var manage = el('div', { class: 'actions' }, judgeCtl,
+      el('button', { class: 'grey', text: 'Extend codes 24h', title: 'Codes keep working for 24 more hours. Also reopens expired codes.', onclick: function () {
+        act(card, 'extend the codes', 'POST', '/events/' + refs.ev.id + '/extend', { hours: 24 }, function (ev) { return 'Codes now valid until ' + fmtTime(ev.expiresAt) + '.'; });
       } }),
-      el('button', { class: 'grey', text: 'Reset all scores', onclick: function () {
-        if (confirm('Reset every judge to 000 / 000?')) act('POST', '/events/' + refs.ev.id + '/reset');
+      el('button', { class: 'grey', text: 'Free all judge slots', title: 'Use when a slot is stuck. Scores are kept.', onclick: function () {
+        askConfirm(card, 'Free every judge slot for ' + label() + '? Each scoring laptop loses its judges and has to click Join again. Scores are kept.', 'Free all slots',
+          function () { act(card, 'free the judge slots', 'POST', '/events/' + refs.ev.id + '/release', null, 'All judge slots are free.'); });
       } }),
       refs.revokeBtn,
+      refs.csvBtn
+    );
+
+    var danger = el('div', { class: 'actions danger' }, el('span', { class: 'danger-label', text: 'Can’t be undone:' }),
+      el('button', { class: 'grey', text: 'Reset all scores', onclick: function () {
+        askConfirm(card, 'Reset all scores for ' + label() + '? Every judge goes back to 000 / 000 and the “Now performing” name is cleared, on the scoring pages and the stream overlay. This can’t be undone.', 'Reset all scores',
+          function () { act(card, 'reset the scores', 'POST', '/events/' + refs.ev.id + '/reset', null, 'Scores reset to 000 / 000.'); });
+      } }),
       el('button', { class: 'grey', text: 'Regenerate codes', onclick: function () {
-        if (confirm('Make new codes? The current scoring code and overlay link stop working immediately.')) act('POST', '/events/' + refs.ev.id + '/regenerate');
+        askConfirm(card, 'Make new codes for ' + label() + '? The current scoring code and overlay URL stop working now: scoring laptops disconnect and the overlay on stream freezes on the last scores. '
+          + 'Afterwards, send the client the new scoring code and update the OBS Browser Source with the new overlay URL.', 'Make new codes',
+          function () { act(card, 'regenerate the codes', 'POST', '/events/' + refs.ev.id + '/regenerate', null, 'New codes are shown above. Send them to the client and update OBS.'); });
       } }),
       el('button', { class: 'red', text: 'Delete', onclick: function () {
-        if (confirm('Delete this event permanently?')) act('DELETE', '/events/' + refs.ev.id);
+        askConfirm(card, 'Delete ' + label() + ' permanently? Scoring laptops and the overlay disconnect, the overlay on stream freezes on the last scores, and the event can’t be recovered.', 'Delete event',
+          function () { act(card, 'delete the event', 'DELETE', '/events/' + refs.ev.id); });
       } })
     );
 
-    var root = el('div', { class: 'panel ev' },
-      el('div', { class: 'ev-head' }, refs.name, refs.badge),
-      refs.meta,
-      field('Scoring code', refs.code, [copyCode]),
-      field('Scoring link', refs.score, [copyScore, openScore]),
-      field('Overlay URL', refs.overlay, [copyOverlay, previewOverlay]),
-      el('div', { class: 'hint', text: 'OBS: add a Browser Source with the Overlay URL, width 1920, height 1080 (match your canvas). Options: add ?size=120, ?pos=top, ?font=Orbitron, ?avg=0' }),
-      refs.live,
-      judgeRow,
-      actions
-    );
-    return { root: root, refs: refs };
+    var handoff = el('div', null,
+      el('h3', { class: 'grp-title', text: 'Send to the client' }),
+      field(el('span', null, 'Event page', el('small', { text: 'one link to every page' })), refs.hub, [copyHub, openHub]),
+      field('Event code', refs.code, [copyCode]),
+      field('Judging', refs.score, [copyScore, openScore]),
+      field('Music', refs.music, [copyMusic, openMusic]),
+      field(el('span', null, 'Timer display', el('small', { text: 'for a stage or judges’ screen' })), refs.timer, [copyTimer, openTimer]),
+      field(el('span', null, 'Overlay URL', el('small', { text: 'for OBS' })), refs.overlay, [copyOverlay, previewOverlay]),
+      el('details', { class: 'obs' },
+        el('summary', { text: 'OBS setup and overlay options' }),
+        el('div', { class: 'hint' },
+          'In OBS, add a Browser Source with the overlay URL at 1920 × 1080 (match your canvas). Optional settings go after the URL: ',
+          el('code', { text: '?size=120' }), ' bigger text, ', el('code', { text: 'pos=top' }), ', ', el('code', { text: 'font=Orbitron' }), ', ',
+          el('code', { text: 'avg=0' }), ' hides the average, ', el('code', { text: 'label=0' }), ' hides the competitor name, ', el('code', { text: 'timer=0' }), ' hides the timer. Join several with ',
+          el('code', { text: '&' }), ', e.g. ', el('code', { text: '?size=120&pos=top' }), '.')));
+
+    card.root = el('details', { class: 'panel ev' },
+      el('summary', null, refs.name, refs.badge, refs.meta),
+      el('div', { class: 'ev-body' },
+        refs.live,
+        handoff,
+        el('div', { class: 'controls' }, manage, danger, refs.confirm, refs.msg)));
+    // Follow the event's status (open while active) until the user opens or folds it themselves.
+    card.autoOpen = true;
+    card.wantOpen = null;
+    card.root.addEventListener('toggle', function () {
+      if (card.root.open !== card.wantOpen) card.autoOpen = false;
+    });
+    return card;
   }
 
-  function act(method, path, body) {
-    return api(method, path, body).then(refresh).catch(function (err) { alert(err.message); });
+  // Runs an event action and reports the result inside that event's card.
+  function act(card, what, method, path, body, success) {
+    if (card.busy) return Promise.resolve();
+    card.busy = true;
+    card.root.setAttribute('aria-busy', 'true');
+    card.autoOpen = false; // don't fold a card out from under the user after they act on it
+    card.refs.msg.className = 'card-msg';
+    card.refs.msg.textContent = '';
+    return api(method, path, body).then(function (data) {
+      if (success) {
+        card.refs.msg.className = 'card-msg ok';
+        card.refs.msg.textContent = typeof success === 'function' ? success(data.event) : success;
+        clearTimeout(card.msgTimer);
+        card.msgTimer = setTimeout(function () { card.refs.msg.textContent = ''; }, 6000);
+      }
+      return refresh();
+    }).catch(function (err) {
+      card.refs.msg.className = 'card-msg';
+      card.refs.msg.textContent = 'Couldn’t ' + what + '. ' + err.message;
+      if (card.refs.ev) card.refs.judgeSel.value = String(card.refs.ev.judges);
+    }).then(function () {
+      card.busy = false;
+      card.root.removeAttribute('aria-busy');
+    });
   }
+
+  var BADGES = { active: 'ACTIVE', expired: 'CODES EXPIRED', revoked: 'DISABLED' };
 
   function updateCard(card, ev) {
     var r = card.refs;
     r.ev = ev;
     r.scoreUrl = location.origin + '/score?code=' + encodeURIComponent(ev.scorerCode);
     r.overlayUrl = location.origin + '/overlay/' + ev.viewKey;
+    r.hubUrl = location.origin + '/?code=' + encodeURIComponent(ev.scorerCode);
+    r.musicUrl = location.origin + '/music?code=' + encodeURIComponent(ev.scorerCode);
+    r.timerUrl = location.origin + '/timer/' + ev.viewKey;
     r.name.textContent = ev.name;
-    r.badge.textContent = ev.status.toUpperCase();
+    r.badge.textContent = BADGES[ev.status] || ev.status.toUpperCase();
     r.badge.className = 'badge ' + ev.status;
-    r.meta.textContent = ev.judges + ' judge' + (ev.judges === 1 ? '' : 's')
-      + ' · created ' + new Date(ev.createdAt).toLocaleString()
-      + ' · expires ' + new Date(ev.expiresAt).toLocaleString();
+    card.wantOpen = ev.status === 'active';
+    if (card.autoOpen && card.root.open !== card.wantOpen) card.root.open = card.wantOpen;
+
+    var judgesText = ev.judges + ' judge' + (ev.judges === 1 ? '' : 's') + ' · ';
+    r.meta.textContent = '';
+    if (ev.status === 'revoked') {
+      r.meta.appendChild(document.createTextNode(judgesText + 'Disabled: nobody can connect until you enable it.'));
+    } else if (ev.status === 'expired') {
+      r.meta.appendChild(document.createTextNode(judgesText));
+      r.meta.appendChild(el('strong', { text: 'Codes expired ' + fmtTime(ev.expiresAt) + '.' }));
+      r.meta.appendChild(document.createTextNode(' Devices already connected keep working; new ones can’t join. Extend the codes to reopen.'));
+    } else {
+      r.meta.appendChild(document.createTextNode(judgesText + 'Codes valid until ' + fmtTime(ev.expiresAt) + ' · created ' + fmtTime(ev.createdAt)));
+    }
+
     r.code.textContent = ev.scorerCode;
     r.score.textContent = r.scoreUrl;
     r.overlay.textContent = r.overlayUrl;
-    if (document.activeElement !== r.judgeSel) r.judgeSel.value = String(ev.judges);
-    r.revokeBtn.textContent = ev.revoked ? 'Enable' : 'Disable';
+    r.hub.textContent = r.hubUrl;
+    r.music.textContent = r.musicUrl;
+    r.timer.textContent = r.timerUrl;
+    if (document.activeElement !== r.judgeSel && r.confirm.classList.contains('hidden')) r.judgeSel.value = String(ev.judges);
+    r.revokeBtn.textContent = ev.revoked ? 'Enable event' : 'Disable event';
+    var nrec = ev.live.recordings || 0;
+    if (!r.csvBtn.disabled) r.csvBtn.textContent = 'Download clicks (CSV)' + (nrec ? ' · ' + nrec + (nrec === 1 ? ' routine' : ' routines') : '');
+    r.csvBtn.title = nrec ? '' : 'No routines recorded yet';
 
     var live = ev.live;
-    r.liveLine.textContent = '';
-    r.liveLine.appendChild(el('span', { class: 'dotc' + (live.scorers > 0 ? ' on' : '') }));
-    r.liveLine.appendChild(document.createTextNode('Scoring laptops: ' + live.scorers + '    '));
-    r.liveLine.appendChild(el('span', { class: 'dotc' + (live.viewers > 0 ? ' on' : '') }));
-    r.liveLine.appendChild(document.createTextNode('Overlay connections: ' + live.viewers + '    '));
     var claimed = live.claimed || [];
-    r.liveLine.appendChild(document.createTextNode('Judge slots in use: ' + claimed.length + ' of ' + ev.judges
-      + (claimed.length ? ' (judge ' + claimed.join(', ') + ')' : '')));
+    var item = function (on, text) { return el('span', null, el('span', { class: 'dotc' + (on ? ' on' : '') }), text); };
+    r.liveLine.textContent = '';
+    r.liveLine.appendChild(item(live.scorers > 0, 'Scoring laptops: ' + (live.scorers ? live.scorers + ' connected' : 'none connected')));
+    r.liveLine.appendChild(item(live.viewers > 0, 'Overlay: ' + (live.viewers ? 'connected' + (live.viewers > 1 ? ' (' + live.viewers + ' open)' : '') : 'not connected')));
+    r.liveLine.appendChild(item(live.music > 0, 'Music: ' + (live.music ? 'connected' : 'not connected')));
+    r.liveLine.appendChild(item(live.displays > 0, 'Timer display: ' + (live.displays ? 'connected' + (live.displays > 1 ? ' (' + live.displays + ' open)' : '') : 'not connected')));
+    r.liveLine.appendChild(item(claimed.length > 0, 'Judges joined: ' + (claimed.length ? claimed.length : 'none') + ' of ' + ev.judges
+      + (claimed.length ? ' (Judge ' + claimed.join(', ') + ')' : '')));
+    var holding = claimed.length > 0 && live.scorers === 0;
+    r.grace.classList.toggle('hidden', !holding);
+    r.grace.textContent = holding ? 'These judge slots are being held for a scoring laptop that disconnected. They free up after 20 seconds unless it reconnects.' : '';
 
     var st = live.state;
     var parts = [];
@@ -300,27 +511,37 @@
     Object.keys(cards).forEach(function (id) {
       if (!seen[id]) { cards[id].root.remove(); delete cards[id]; }
     });
-    if (!list.length && !container.firstChild) {
-      container.appendChild(el('div', { class: 'hint', text: 'No events yet. Create one above.' }));
-    } else if (list.length && container.firstChild && container.firstChild.className === 'hint') {
-      container.removeChild(container.firstChild);
-    }
+    $('emptyHint').classList.toggle('hidden', list.length > 0);
   }
 
+  var createMsgTimer = null;
   $('createBtn').addEventListener('click', function () {
-    $('createMsg').textContent = '';
+    var msg = $('createMsg');
+    msg.className = 'msg';
+    msg.textContent = '';
+    var name = $('newName').value.trim();
+    if (!name) { msg.textContent = 'Give the event a name first.'; $('newName').focus(); return; }
+    var btn = $('createBtn');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    clearTimeout(createMsgTimer);
     api('POST', '/events', {
-      name: $('newName').value,
+      name: name,
       judges: Number($('newJudges').value),
       hours: Number($('newHours').value),
-    }).then(function () {
+    }).then(function (data) {
       $('newName').value = '';
+      msg.className = 'msg ok';
+      msg.textContent = 'Created “' + data.event.name + '”. Send the client its scoring code and overlay URL below.';
+      createMsgTimer = setTimeout(function () { msg.textContent = ''; }, 10000);
       refresh();
-    }).catch(function (err) { $('createMsg').textContent = err.message; });
+    }).catch(function (err) { msg.textContent = 'Couldn’t create the event. ' + err.message; })
+      .then(function () { btn.disabled = false; });
   });
 
   function login() {
     password = $('pw').value;
+    if (!password) { $('loginMsg').textContent = 'Enter the admin password.'; return; }
     sessionStorage.setItem('yoyo.admin', password);
     $('loginMsg').textContent = '';
     refresh();

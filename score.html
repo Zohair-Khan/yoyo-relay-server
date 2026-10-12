@@ -4,170 +4,304 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Yoyo Judge Scoring</title>
+<title>Judging · Yo-Yo Event Management</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap">
 <style>
+  /* spacing scale (4px base) */
+  :root { --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; }
   * { box-sizing: border-box; }
   body {
     font-family: -apple-system, Segoe UI, Roboto, sans-serif;
     background: #1a1a1a;
     color: #eee;
     margin: 0;
-    padding: 16px;
   }
-  .wrap { max-width: 1400px; margin: 0 auto; }
-  h1 { font-size: 20px; margin: 0; }
-  .topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
-  .pills { display: flex; gap: 8px; flex-wrap: wrap; }
-  .pill { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: #444; color: #ddd; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 0 var(--s4) var(--s7); }
+  .hidden { display: none !important; }
+
+  /* sticky header: identity + connection + banners stay visible while scrolled */
+  .top { position: sticky; top: 0; z-index: 10; background: #1a1a1a; padding: var(--s3) 0 var(--s1); border-bottom: 1px solid #2a2a2a; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s2) var(--s4); margin-bottom: var(--s2); }
+  .top-id { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s1) var(--s3); min-width: 0; }
+  h1 { font-size: 13px; font-weight: 600; color: #aaa; margin: 0; white-space: nowrap; }
+  .page-name { color: #ddd; }
+  /* links between the event's pages (shared with music) */
+  .pages { display: flex; gap: var(--s1); flex-wrap: wrap; }
+  .pages a { color: #bbb; text-decoration: none; font-size: 13px; font-weight: 600; padding: 5px 10px; border-radius: 6px; }
+  .pages a:hover { background: #2c2c2c; color: #fff; }
+  .pages a[aria-current="page"] { background: #2c2c2c; color: #fff; box-shadow: inset 0 -2px 0 #1565c0; }
+  .pages a:focus-visible { outline: 2px solid #64b5f6; outline-offset: 2px; }
+  #eventName { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+  #eventMeta { font-size: 12px; color: #999; }
+  .pills { display: flex; gap: var(--s2); flex-wrap: wrap; }
+  .pill { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: #444; color: #ddd; white-space: nowrap; }
   .pill-ok { background: #2e7d32; color: #fff; }
   .pill-warn { background: #f9a825; color: #000; }
   .pill-bad { background: #c62828; color: #fff; }
-  .panel { background: #242424; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
-  .panel h2 { font-size: 14px; margin: 0 0 8px 0; color: #ccc; }
-  .hidden { display: none !important; }
-  label { display: block; font-size: 12px; color: #aaa; margin-bottom: 4px; }
+
+  #banners .banner { padding: 10px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-bottom: var(--s2); }
+  .banner.err { background: #7f1d1d; border: 1px solid #ef5350; color: #ffd6d6; }
+  .banner.warn, .banner.offline { background: #4a3600; border: 1px solid #f9a825; color: #ffd54f; }
+  .banner.info { background: #12304d; border: 1px solid #1565c0; color: #cfe3ff; font-weight: 400; }
+
+  /* sections: generous space between, tight within */
+  .sec { margin-top: var(--s6); }
+  .sec-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s2) var(--s3); margin-bottom: var(--s3); }
+  .sec-title { font-size: 14px; font-weight: 600; color: #ccc; margin: 0; }
+  #mineSec .sec-title { font-size: 15px; color: #eee; }
+  .panel { background: #242424; border-radius: 10px; padding: var(--s4); }
+
+  label { display: block; font-size: 12px; color: #aaa; margin-bottom: var(--s1); }
+  ::placeholder { color: #8f8f8f; opacity: 1; }
   input[type=text], input[type=number], select {
     padding: 8px 10px; border-radius: 6px; border: 1px solid #3a3a3a;
-    background: #1a1a1a; color: #eee; font-size: 14px;
+    background: #1a1a1a; color: #eee; font-size: 14px; max-width: 100%;
   }
   button {
     padding: 8px 14px; border: none; border-radius: 6px; font-size: 14px;
     font-weight: 600; cursor: pointer; background: #1565c0; color: #fff;
   }
   button:disabled { background: #444; color: #888; cursor: not-allowed; }
+  button:not(:disabled):hover { filter: brightness(1.15); }
+  button:not(:disabled):active { filter: brightness(.9); }
   .btn-grey { background: #444; }
-  .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .row { display: flex; gap: var(--s2) var(--s3); align-items: flex-end; flex-wrap: wrap; }
 
-  #banners .banner { padding: 10px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
-  .banner.err { background: #7f1d1d; border: 1px solid #ef5350; color: #ffd6d6; }
-  .banner.warn { background: #4a3600; border: 1px solid #f9a825; color: #ffd54f; }
-  .banner.info { background: #12304d; border: 1px solid #1565c0; color: #cfe3ff; font-weight: 400; }
+  /* connect */
+  #connectPanel { margin-top: var(--s6); max-width: 560px; }
+  #connectPanel .sec-title { margin-bottom: var(--s3); }
+  #codeInput { width: 280px; }
+  #connectMsg { margin-top: var(--s2); font-size: 13px; color: #ef9a9a; }
 
-  .ident-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-family: Consolas, monospace; font-size: 13px; flex-wrap: wrap; }
-  .dot { width: 12px; height: 12px; border-radius: 50%; background: #444; flex-shrink: 0; }
-  .dot.active { background: #66bb6a; box-shadow: 0 0 10px 3px rgba(102,187,106,.8); }
-  .ident-id { color: #aaa; }
-  .ident-meta { margin-left: auto; color: #888; font-size: 11px; }
-  .none { color: #777; font-style: italic; font-size: 13px; }
-
-  #judgesGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; margin-bottom: 14px; }
-  .ver { font-size: 11px; color: #777; font-weight: 400; margin-left: 8px; }
-
-  /* judge slot states: free (nobody), mine (this device), taken (another device) */
+  /* judge cards, shared parts */
+  .card { background: #242424; border: 1px solid #333; border-radius: 10px; padding: var(--s3); outline: 2px solid transparent; }
+  .card.flash { outline-color: #66bb6a; }
+  .card.flash-err { outline-color: #ef5350; }
   .card.s-free .only-mine, .card.s-free .only-taken, .card.s-free .counters { display: none; }
   .card.s-mine .only-free, .card.s-mine .only-taken { display: none; }
   .card.s-taken .only-mine, .card.s-taken .only-free { display: none; }
-  .card.s-taken { opacity: .8; }
-  .card.s-mine { border-color: #2e7d32; }
+  .card-head { display: flex; align-items: center; gap: var(--s2) var(--s3); flex-wrap: wrap; }
+  .card-title { font-weight: 700; font-size: 16px; }
   .card-status { font-size: 12px; color: #999; }
-  .join-box { text-align: center; padding: 16px 0 8px; }
-  .join-box button { padding: 10px 24px; font-size: 15px; margin-bottom: 8px; }
-  .leave-btn { background: #444; font-size: 12px; padding: 4px 10px; }
+  .card-warn { color: #ffb74d; font-size: 12px; }
+  .card-warn:empty { display: none; }
+  .tag { font-size: 12px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; background: #2e7d32; color: #fff; padding: 3px 8px; border-radius: 4px; }
+  .leave-btn { background: #444; font-size: 12px; padding: 4px 10px; margin-left: auto; }
+  .counters { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+  .counter { background: #1a1a1a; border-radius: 8px; padding: var(--s2); text-align: center; }
+  .counter .lbl { font-size: 12px; color: #999; letter-spacing: .5px; }
+  .val { font-size: 34px; font-weight: 400; font-family: 'Share Tech Mono', Consolas, monospace; font-variant-numeric: tabular-nums; margin: 4px 0; }
+  .val.pos { color: #66bb6a; }
+  .val.neg { color: #ef5350; }
+  .cbtns { display: flex; gap: 6px; justify-content: center; }
+  .cbtns button { width: 38px; height: 34px; padding: 0; font-size: 16px; background: #333; }
 
-  /* stream overlay preview (mirrors overlay.html with default options) */
+  /* your judges: the primary surface, readable at arm's length */
+  #mineGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: var(--s4); }
+  .card.s-mine { border: 2px solid #2e7d32; padding: var(--s4); display: flex; flex-direction: column; gap: var(--s3); }
+  .s-mine .card-title { font-size: 24px; font-weight: 800; }
+  .ctrl-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); }
+  .ctrl-row label { margin: 0; }
+  .ctrl-row select { flex: 1 1 200px; max-width: 360px; font-size: 13px; }
+  .s-mine .counter { padding: var(--s3) var(--s2); }
+  .s-mine .counter .lbl { font-size: 13px; font-weight: 700; letter-spacing: 1px; }
+  .s-mine .val { font-size: clamp(52px, 6.5vw, 96px); line-height: 1; margin: var(--s2) 0 var(--s3); }
+  .s-mine .cbtns button { width: 48px; height: 44px; font-size: 20px; }
+
+  /* open slots: compact join tiles; large when this device has no judge yet */
+  #freeGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--s2); }
+  .card.s-free { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); padding: var(--s2) var(--s3); }
+  .join-box button { padding: 6px 12px; font-size: 13px; }
+  .join-box .card-status { display: none; }
+  #freeSec.choose #freeGrid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: var(--s3); }
+  #freeSec.choose .card.s-free { flex-direction: column; align-items: stretch; text-align: center; gap: var(--s3); padding: var(--s4); }
+  #freeSec.choose .card-head { justify-content: center; }
+  #freeSec.choose .card-title { font-size: 20px; }
+  #freeSec.choose .join-box button { width: 100%; padding: 12px 16px; font-size: 16px; }
+  #freeSec.choose .join-box .card-status { display: block; margin-top: var(--s2); }
+
+  /* other devices' judges: one read-only line each */
+  #othersGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--s2); }
+  .card.s-taken { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s1) var(--s3); padding: var(--s2) var(--s3); opacity: .85; }
+  .s-taken .card-head { min-width: 0; }
+  .s-taken .card-title { font-size: 14px; }
+  .s-taken .counters { display: flex; gap: var(--s4); }
+  .s-taken .counter { background: none; padding: 0; display: flex; align-items: baseline; gap: 6px; }
+  .s-taken .val { font-size: 20px; margin: 0; }
+
+  /* stream preview (mirrors overlay.html with the look set on the music page) */
+  .stream { display: flex; flex-direction: column; gap: var(--s4); }
   #pvStage { border-radius: 6px; overflow: hidden; padding-top: 34px; display: flex; flex-direction: column; justify-content: flex-end;
     background: repeating-conic-gradient(#2b2b2b 0 25%, #212121 0 50%) 0 0 / 18px 18px; }
   #pvBar { display: none; box-sizing: border-box; padding: 0.3em 0.6em; color: #fff; background: rgba(0,0,0,0.72);
     font-family: 'Share Tech Mono', Consolas, 'Courier New', monospace; line-height: 1.15; text-transform: uppercase; white-space: nowrap; }
   #pvGrid { display: grid; width: max-content; margin: 0 auto; column-gap: 1.4em; row-gap: 0.1em; justify-items: start; }
   #pvGrid .name { opacity: 0.85; margin-right: 0.4em; }
-  .pv-note { font-size: 11px; color: #777; margin-top: 6px; }
-  .card { background: #242424; border: 1px solid #333; border-radius: 10px; padding: 12px; outline: 2px solid transparent; }
-  .card.flash { outline-color: #66bb6a; }
-  .card.flash-err { outline-color: #ef5350; }
-  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-  .card-title { font-weight: 700; font-size: 16px; }
-  .card-head select { flex: 1; max-width: 200px; font-size: 12px; padding: 5px 6px; }
-  .card-head .card-title { flex: 1; }
-  .card-warn { color: #ffb74d; font-size: 12px; min-height: 16px; }
-  .counters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0; }
-  .counter { background: #1a1a1a; border-radius: 8px; padding: 8px; text-align: center; }
-  .counter .lbl { font-size: 11px; color: #999; letter-spacing: .5px; }
-  .val { font-size: 34px; font-weight: 700; font-family: Consolas, monospace; margin: 4px 0; }
-  .val.pos { color: #66bb6a; }
-  .val.neg { color: #ef5350; }
-  .cbtns { display: flex; gap: 6px; justify-content: center; }
-  .cbtns button { width: 38px; height: 34px; padding: 0; font-size: 16px; background: #333; }
-  details.map summary { cursor: pointer; font-size: 12px; color: #999; margin-top: 4px; }
+  .pv-note { font-size: 12px; color: #8f8f8f; margin-top: 6px; }
+  /* public judge numbers */
+  .alias { font-size: 12px; font-weight: 600; color: #bbb; white-space: nowrap; }
+  .s-mine .alias { font-size: 13px; color: #cfe3ff; }
+  .shuffle-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s3); padding-top: var(--s4); border-top: 1px solid #333; }
+  .shuffle-row .sh-title { font-size: 14px; color: #ddd; }
+  .shuffle-row .pv-note { max-width: 62ch; line-height: 1.5; }
+
+  /* setup drawer */
+  details.drawer > summary { cursor: pointer; font-size: 14px; font-weight: 600; color: #ccc; }
+  details.drawer[open] > summary { margin-bottom: var(--s3); }
+  .drawer-hint { font-size: 12px; color: #999; margin: 0 0 var(--s2); }
+  .ident-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-family: Consolas, monospace; font-size: 13px; flex-wrap: wrap; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: #444; flex-shrink: 0; }
+  .dot.active { background: #66bb6a; outline: 2px solid #66bb6a; outline-offset: 2px; }
+  .ident-id { color: #aaa; }
+  .ident-meta { margin-left: auto; color: #888; font-size: 12px; }
+  .none { color: #8f8f8f; font-style: italic; font-size: 13px; }
+  .haptic-row { margin-top: var(--s4); }
+
+  /* button mapping (inside your judge cards) */
+  details.map summary { cursor: pointer; font-size: 12px; color: #999; }
   .map-row { padding: 5px 0; border-bottom: 1px solid #2a2a2a; }
   .map-top { display: flex; align-items: center; justify-content: space-between; }
   .map-label { font-size: 12px; color: #999; }
-  .map-add { background: #1a1a1a; color: #64b5f6; border: 1px solid #3a3a3a; padding: 2px 8px; font-size: 11px; }
+  .map-add { background: #1a1a1a; color: #64b5f6; border: 1px solid #3a3a3a; padding: 2px 8px; font-size: 12px; }
   .map-add.listening { background: #f9a825; color: #000; border-color: #f9a825; }
   .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
-  .chip { display: flex; align-items: center; gap: 4px; background: #1a1a1a; border: 1px solid #3a3a3a; border-radius: 12px; padding: 2px 4px 2px 9px; font-size: 11px; }
-  .chip .x { cursor: pointer; color: #e57373; font-weight: 700; padding: 0 4px; }
-  .chip-empty { font-size: 11px; color: #777; font-style: italic; }
-  #log { max-height: 180px; overflow-y: auto; font-size: 11px; color: #aaa; white-space: pre-wrap; margin: 8px 0 0 0; }
-  summary { cursor: pointer; }
+  .chip { display: flex; align-items: center; gap: 4px; background: #1a1a1a; border: 1px solid #3a3a3a; border-radius: 12px; padding: 2px 4px 2px 9px; font-size: 12px; }
+  .chip .x { background: none; color: #e57373; font-weight: 700; font-size: 14px; line-height: 1; padding: 2px 6px; border-radius: 10px; }
+  .chip-empty { font-size: 12px; color: #8f8f8f; font-style: italic; }
+
+  /* this device */
+  .device-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s3); }
+  #logBox { margin-top: var(--s3); }
+  #logBox summary { cursor: pointer; font-size: 13px; color: #aaa; }
+  #log { max-height: 180px; overflow-y: auto; font-size: 12px; color: #aaa; white-space: pre-wrap; margin: var(--s2) 0 0 0; }
+
+  /* offline: this device keeps scoring (saved locally); others' numbers may be stale */
+  .offline-strip { display: none; }
+  #eventArea.offline .card.s-mine { border-color: #f9a825; border-style: dashed; }
+  #eventArea.offline .card.s-mine .offline-strip {
+    display: block; background: #4a3600; border: 1px solid #f9a825; color: #ffd54f; border-radius: 6px;
+    padding: var(--s2); text-align: center; font-size: 14px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;
+  }
+  #eventArea.offline .card.s-taken .counters { opacity: .35; }
+
+  /* two-step confirm for actions that lose scores or slots */
+  button.armed, .cbtns button.armed { background: #c62828; color: #fff; }
+  .arm-hint { font-size: 12px; color: #ffb4b4; margin-top: var(--s2); min-height: 1.5em; }
+
+  button:focus-visible, summary:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #64b5f6; outline-offset: 2px; }
+
+  @media (max-width: 520px) {
+    #codeInput { width: 100%; }
+    /* keep the sticky header short so the judge cards stay in view */
+    .top { padding-top: var(--s2); }
+    .topbar { flex-wrap: nowrap; align-items: flex-start; }
+    #eventMeta { display: none; }
+    h1 { font-size: 12px; white-space: normal; }
+    #eventName { font-size: 15px; }
+    .s-mine .cbtns button { width: 44px; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="topbar">
-    <h1>Yoyo Judge Scoring<span class="ver">v2.4</span></h1>
-    <div class="pills">
-      <span class="pill" id="connPill">Not connected</span>
-      <span class="pill" id="overlayPill">Overlay: —</span>
-      <span class="pill" id="latPill">— ms</span>
+  <header class="top">
+    <div class="topbar">
+      <div class="top-id">
+        <h1>Yo-Yo Event Management <span class="page-name">· Judging</span></h1>
+        <div id="eventHead" class="hidden">
+          <span id="eventName"></span>
+          <span id="eventMeta"></span>
+        </div>
+      </div>
+      <nav class="pages hidden" id="pageNav" aria-label="Event pages">
+        <a id="navHome" href="/">All pages</a>
+        <a id="navScore" aria-current="page">Judging</a>
+        <a id="navMusic">Music</a>
+        <a id="navTimer" target="_blank" rel="noopener">Timer display</a>
+      </nav>
+      <div class="pills">
+        <span class="pill" id="connPill">Not connected</span>
+      </div>
     </div>
-  </div>
-
-  <div id="banners"></div>
+    <div id="banners">
+      <div id="bannersErr" role="alert"></div>
+      <div id="bannersInfo" role="status"></div>
+    </div>
+  </header>
 
   <div class="panel" id="connectPanel">
-    <h2>Enter your event code</h2>
+    <h2 class="sec-title">Enter your event code</h2>
     <div class="row">
       <div>
         <label for="codeInput">Event code (from the organizer)</label>
-        <input type="text" id="codeInput" autocomplete="off" spellcheck="false" placeholder="WORD-WORD-WORD-00" style="width:280px">
+        <input type="text" id="codeInput" autocomplete="off" spellcheck="false" placeholder="WORD-WORD-WORD-00">
       </div>
       <button id="connectBtn">Connect</button>
     </div>
-    <div id="connectMsg" style="margin-top:8px;font-size:13px;color:#ef9a9a"></div>
+    <div id="connectMsg" role="alert"></div>
   </div>
 
-  <div id="eventArea" class="hidden">
-    <div class="panel">
-      <div class="row" style="align-items:center;justify-content:space-between">
-        <div>
-          <div style="font-size:16px;font-weight:700" id="eventName"></div>
-          <div style="font-size:12px;color:#999" id="eventMeta"></div>
-        </div>
-        <button class="btn-grey" id="disconnectBtn">Disconnect / change code</button>
-      </div>
-    </div>
+  <main id="eventArea" class="hidden">
+    <section class="sec hidden" id="mineSec" aria-labelledby="mineTitle">
+      <div class="sec-head"><h2 class="sec-title" id="mineTitle">Your judges on this device</h2></div>
+      <div id="mineGrid"></div>
+    </section>
 
-    <div class="panel">
-      <h2>Now performing (optional, shown on the stream overlay)</h2>
-      <div class="row">
-        <input type="text" id="labelInput" maxlength="40" placeholder="Competitor name / division" style="width:320px">
-        <button class="btn-grey" id="labelClear">Clear</button>
-      </div>
-    </div>
+    <section class="sec hidden" id="freeSec" aria-labelledby="freeTitle">
+      <div class="sec-head"><h2 class="sec-title" id="freeTitle">Open judge slots</h2></div>
+      <div id="freeGrid"></div>
+    </section>
 
-    <div class="panel">
-      <h2>Stream overlay preview</h2>
-      <div id="pvStage"><div id="pvBar"><div id="pvGrid"></div></div></div>
-      <div class="pv-note">This is what appears at the bottom of the stream (default overlay settings).</div>
-    </div>
-
-    <div class="panel">
-      <h2>Controllers — press any button on a controller to see which row lights up</h2>
-      <div id="identList"></div>
-      <div class="row" style="margin-top:10px">
-        <div>
+    <section class="sec">
+      <details class="panel drawer" id="setupBox">
+        <summary>Controllers and vibration</summary>
+        <p class="drawer-hint">Press any button on a controller to see which row lights up.</p>
+        <div id="identList"></div>
+        <div class="haptic-row">
           <label for="hapticMs">Vibration on score (ms, 0 = off)</label>
           <input type="number" id="hapticMs" min="0" max="500" step="10" style="width:120px">
         </div>
+      </details>
+    </section>
+
+    <section class="sec" aria-labelledby="streamTitle">
+      <div class="sec-head">
+        <h2 class="sec-title" id="streamTitle">Stream</h2>
+        <div class="pills">
+          <span class="pill" id="overlayPill">Overlay: —</span>
+          <span class="pill" id="latPill">— ms</span>
+        </div>
       </div>
-    </div>
+      <div class="panel stream">
+        <div>
+          <div id="pvStage"><div id="pvBar"><div id="pvGrid"></div></div></div>
+          <div class="pv-note">This is what appears on the stream, with the look set on the music page.</div>
+        </div>
+        <div class="shuffle-row">
+          <div>
+            <div class="sh-title">Judge numbers on stream: <strong id="aliasState">in seat order</strong></div>
+            <div class="pv-note">Randomize gives each judge a different number on the stream, so spectators can’t tell who sits where. Each judge’s real seat is still recorded with every score.</div>
+          </div>
+          <button class="btn-grey" id="shuffleBtn">Randomize</button>
+        </div>
+      </div>
+    </section>
 
-    <div id="judgesGrid"></div>
-  </div>
+    <section class="sec hidden" id="othersSec" aria-labelledby="othersTitle">
+      <div class="sec-head"><h2 class="sec-title" id="othersTitle">Taken by other devices (scores shown read-only)</h2></div>
+      <div id="othersGrid"></div>
+    </section>
 
-  <details class="panel">
+    <section class="sec" aria-labelledby="deviceTitle">
+      <div class="sec-head"><h2 class="sec-title" id="deviceTitle">This device</h2></div>
+      <div class="panel device-row">
+        <span class="card-status">Disconnecting gives back every judge slot this device holds.</span>
+        <button class="btn-grey" id="disconnectBtn">Disconnect / change code</button>
+      </div>
+    </section>
+  </main>
+
+  <details class="sec" id="logBox">
     <summary>Activity log (useful if something goes wrong)</summary>
     <pre id="log"></pre>
   </details>
@@ -329,6 +463,7 @@
       lastMsgAt = Date.now();
       var msg;
       try { msg = JSON.parse(e.data); } catch (err) { return; }
+      if (typeof msg.now === 'number') clockOffset = msg.now - Date.now();
       handleMessage(msg);
     };
     mine.onclose = function () {
@@ -358,9 +493,17 @@
     connected = false;
     clearTimeout(reconnectTimer);
     if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { /* ignore */ } ws = null; }
-    if (forget) { store.remove('yoyo.code'); wanted = {}; ss.remove('yoyo.wanted'); }
+    if (forget) {
+      store.remove('yoyo.code');
+      store.remove('yoyo.session');
+      if (tallyKey()) store.remove(tallyKey());
+      tally = {}; lost = []; orphan = null;
+      wanted = {}; ss.remove('yoyo.wanted');
+    }
     mineList = []; takenList = [];
     $('eventArea').classList.add('hidden');
+    $('eventHead').classList.add('hidden');
+    $('pageNav').classList.add('hidden');
     $('connectPanel').classList.remove('hidden');
     updatePills();
     updateBanners();
@@ -379,22 +522,31 @@
           toRestore = cache.state;
         }
         var prevEvt = evt;
+        var wasOrphan = !!orphan;
+        orphan = null;
         evt = msg.event;
         lastEpoch = msg.epoch;
         store.set('yoyo.code', currentCode);
         if (newEvent) {
-          var keep = (prevEvt && prevEvt.id === evt.id) ? assignment : {};
+          var sameEvent = prevEvt && prevEvt.id === evt.id;
+          var keep = sameEvent ? assignment : {};
           buildJudges(evt.judges);
           Object.keys(keep).forEach(function (k) { if (Number(k) <= evt.judges && keep[k] != null) assignment[k] = keep[k]; });
           refreshSelects();
           cache = null;
+          if (!sameEvent) { lost = []; loadTally(); }
+          Object.keys(tally).forEach(function (k) { if (Number(k) > evt.judges) delete tally[k]; });
         }
+        // Server lost its scores (restart) or we were cut off: this device's numbers win.
+        if (serverRestarted || wasOrphan) markAllPending();
         showEvent();
         applyState(msg.state);
         viewers = msg.status ? msg.status.viewers : 0;
         applySlots(msg.status ? msg.status.taken : [], msg.status ? msg.status.mine : [], true);
         // Re-claim the judge slots this tab had (e.g. after a server restart).
+        var fromTally = Object.keys(tally);
         loadWanted(evt.id);
+        fromTally.forEach(function (k) { if (Number(k) <= evt.judges) wanted[k] = true; });
         Object.keys(wanted).forEach(function (k) {
           var j = Number(k);
           if (j > evt.judges) { delete wanted[k]; return; }
@@ -405,7 +557,8 @@
           ws.send(JSON.stringify({ type: 'restore', state: toRestore }));
           log('Server had restarted; restored scores.');
         }
-        log('Connected to "' + evt.name + '" (' + evt.judges + ' judges).');
+        saveSession();
+        log('Connected to "' + evt.name + '" (' + evt.judges + ' judges).' + (wasOrphan || serverRestarted ? ' Sending this device\'s scores.' : ''));
         requestWake();
         break;
       }
@@ -413,22 +566,39 @@
       case 'status':
         viewers = msg.viewers;
         applySlots(msg.taken || [], msg.mine || [], false);
+        saveSession();
         break;
       case 'claimFailed':
         delete wanted[msg.judge];
         saveWanted();
+        dropTally(msg.judge, 'is now held by another device.');
         slotNotice('Judge ' + msg.judge + ' was just taken by another device.');
         log('Judge ' + msg.judge + ' is already taken.');
         break;
+      case 'pressAck': {
+        var ta = tally[msg.judge];
+        if (ta && ta.log && Array.isArray(msg.ids)) {
+          ta.log = ta.log.filter(function (p) { return msg.ids.indexOf(p.id) < 0; });
+          saveTally();
+        }
+        break;
+      }
       case 'denied':
-        log('Server refused a score for Judge ' + msg.judge + ' (not held by this device).');
-        flash(msg.judge, false);
+        // A total sent before a re-claim landed is retried; nothing to show.
+        log('Server refused a score for Judge ' + msg.judge + ' (not held by this device yet).');
         break;
       case 'pong': rtt = rtt == null ? performance.now() - msg.t : rtt * 0.7 + (performance.now() - msg.t) * 0.3; break;
       case 'tick': break;
       case 'error':
         log('Server: ' + msg.message);
-        if (msg.fatal) {
+        if (msg.fatal && evt && (mineList.length || Object.keys(tally).length)) {
+          // Never drop a judge mid-performance: keep scoring here and retry slowly
+          // (slowly, so a whole venue retrying doesn't trip the server's rate limit).
+          orphan = msg.message;
+          connected = false;
+          if (ws) ws._retryAfter = 120000;
+          log('Scores stay on this device; retrying every 2 minutes.');
+        } else if (msg.fatal) {
           wantConnected = false;
           store.remove('yoyo.code');
           disconnect(false);
@@ -522,28 +692,71 @@
         if (mine.indexOf(j) < 0 && wanted[j]) {
           delete wanted[j];
           saveWanted();
+          dropTally(j, 'was released by the organizer.');
           log('Judge ' + j + ' slot was released.');
           slotNotice('Judge ' + j + ' was released by the organizer.');
         }
       });
     }
+    // Newly held judges start from the server's numbers; held ones show this device's.
+    mine.forEach(function (j) {
+      if (!tally[j] && pvState && pvState.judges[j]) reconcile(j, pvState.judges[j]);
+      showTally(j);
+    });
+    // Judges no longer held show the server's numbers again.
+    prev.forEach(function (j) {
+      if (mine.indexOf(j) < 0 && ui[j] && pvState && pvState.judges[j]) {
+        ui[j].posEl.textContent = fmt(pvState.judges[j].pos);
+        ui[j].negEl.textContent = fmt(pvState.judges[j].neg);
+      }
+    });
     renderSlots();
   }
 
+  // Each card lives in the section for its role: this device's judges first and
+  // large, open slots as join tiles, other devices' judges as read-only lines.
   function renderSlots() {
     var changed = false;
+    var moved = false;
+    var counts = { mineGrid: 0, freeGrid: 0, othersGrid: 0 };
     Object.keys(ui).forEach(function (k) {
       var n = Number(k);
       var isMine = mineList.indexOf(n) >= 0;
       var isTaken = !isMine && takenList.indexOf(n) >= 0;
+      var target = isMine ? 'mineGrid' : (isTaken ? 'othersGrid' : 'freeGrid');
+      counts[target]++;
+      if (ui[n].card.parentNode !== $(target)) moved = true;
+      ui[n].target = target;
       ui[n].card.classList.toggle('s-mine', isMine);
       ui[n].card.classList.toggle('s-taken', isTaken);
       ui[n].card.classList.toggle('s-free', !isMine && !isTaken);
-      ui[n].status.textContent = isTaken ? 'Taken by another device (scores shown read-only).' : '';
       if (!isMine && assignment[n] != null) { assignment[n] = null; changed = true; }
     });
+    if (moved) {
+      Object.keys(ui).map(Number).sort(function (a, b) { return a - b; }).forEach(function (n) {
+        $(ui[n].target).appendChild(ui[n].card);
+      });
+    }
+    var choosing = !mineList.length;
+    $('mineSec').classList.toggle('hidden', !counts.mineGrid);
+    $('othersSec').classList.toggle('hidden', !counts.othersGrid);
+    $('freeSec').classList.toggle('hidden', !counts.freeGrid);
+    $('freeSec').classList.toggle('choose', choosing);
+    $('freeTitle').textContent = choosing ? 'Choose your judge' : 'Open judge slots';
     if (changed) refreshSelects();
     updateBanners();
+  }
+
+  // Setup drawer opens while one of this device's judges has no controller and
+  // closes once all are assigned, until the user toggles it themselves.
+  var setupAuto = true;
+  var setupWant = false;
+  $('setupBox').addEventListener('toggle', function () {
+    if (this.open !== setupWant) setupAuto = false;
+  });
+  function syncSetup() {
+    setupWant = mineList.some(function (n) { return assignment[n] == null; });
+    if (setupAuto && $('setupBox').open !== setupWant) $('setupBox').open = setupWant;
   }
 
   function joinJudge(n) {
@@ -556,64 +769,126 @@
   function leaveJudge(n) {
     delete wanted[n];
     saveWanted();
+    delete tally[n];
+    saveTally();
     if (isHealthy()) ws.send(JSON.stringify({ type: 'release', judge: n }));
   }
 
   function showEvent() {
     $('connectPanel').classList.add('hidden');
     $('eventArea').classList.remove('hidden');
+    $('eventHead').classList.remove('hidden');
+    var c = encodeURIComponent(currentCode);
+    $('navHome').href = '/?code=' + c;
+    $('navScore').href = '/score?code=' + c;
+    $('navMusic').href = '/music?code=' + c;
+    $('navTimer').classList.toggle('hidden', !evt.viewKey);
+    if (evt.viewKey) $('navTimer').href = '/timer/' + encodeURIComponent(evt.viewKey);
+    $('pageNav').classList.remove('hidden');
     $('eventName').textContent = evt.name;
     $('eventMeta').textContent = evt.judges + ' judge' + (evt.judges === 1 ? '' : 's')
       + (evt.expiresAt ? ' · code valid until ' + new Date(evt.expiresAt).toLocaleString() : '');
   }
 
   function buildJudges(count) {
-    var grid = $('judgesGrid');
-    grid.textContent = '';
+    ['mineGrid', 'freeGrid', 'othersGrid'].forEach(function (id) { $(id).textContent = ''; });
     ui = {};
     assignment = {};
     cardWarn = {};
-    for (var n = 1; n <= count; n++) buildCard(n, grid);
+    disarm();
+    for (var n = 1; n <= count; n++) buildCard(n, $('freeGrid'));
+    offlineShown = null; // new buttons: re-apply the offline state
     refreshSelects();
   }
 
+  // Two-step confirm: the first click arms the button, a second click within 3s acts.
+  var arm = { key: null, btn: null, text: '', hint: null, timer: null };
+  function disarm() {
+    if (!arm.key) return;
+    clearTimeout(arm.timer);
+    arm.btn.classList.remove('armed');
+    if (arm.text) arm.btn.textContent = arm.text;
+    if (arm.hint) arm.hint.textContent = '';
+    arm.key = null; arm.btn = null; arm.text = ''; arm.hint = null;
+  }
+  function confirmClick(key, btn, armedText, hint, hintText, fn) {
+    if (arm.key === key) { disarm(); fn(); return; }
+    disarm();
+    arm.key = key; arm.btn = btn; arm.hint = hint;
+    arm.text = armedText ? btn.textContent : '';
+    btn.classList.add('armed');
+    if (armedText) btn.textContent = armedText;
+    if (hint) hint.textContent = hintText;
+    arm.timer = setTimeout(disarm, 3000);
+  }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') disarm(); });
+
   function counter(label, valEl, type, n) {
+    var hint = el('div', { class: 'arm-hint only-mine' });
+    var resetBtn = el('button', { text: '↺', title: 'Reset ' + label, 'aria-label': 'Reset Judge ' + n + ' ' + label + ' to zero' });
+    resetBtn.onclick = function () {
+      confirmClick('reset-' + n + '-' + type, resetBtn, null, hint, 'Press ↺ again to reset ' + label + ' to 000.',
+        function () { manual(n, type + '-reset'); });
+    };
     return el('div', { class: 'counter' },
       el('div', { class: 'lbl', text: label }),
       valEl,
       el('div', { class: 'cbtns only-mine' },
-        el('button', { text: '−', title: label + ' −1', onclick: function () { manual(n, type + '-'); } }),
-        el('button', { text: '+', title: label + ' +1', onclick: function () { manual(n, type + '+'); } }),
-        el('button', { text: '↺', title: 'Reset ' + label, onclick: function () { manual(n, type + '-reset'); } })
-      )
+        el('button', { text: '−', title: label + ' −1', 'aria-label': 'Judge ' + n + ' ' + label + ' minus one', onclick: function () { manual(n, type + '-'); } }),
+        el('button', { text: '+', title: label + ' +1', 'aria-label': 'Judge ' + n + ' ' + label + ' plus one', onclick: function () { manual(n, type + '+'); } }),
+        resetBtn
+      ),
+      hint
     );
+  }
+
+  // Offline, this device's judges keep scoring (saved here, sent later). Only
+  // joining and leaving judge slots need the server, so those pause.
+  var offlineShown = null;
+  function syncOffline() {
+    var off = !!(evt && wantConnected && !isHealthy());
+    if (off === offlineShown) return;
+    offlineShown = off;
+    $('eventArea').classList.toggle('offline', off);
+    document.querySelectorAll('#eventArea .leave-btn, #eventArea .join-box button')
+      .forEach(function (b) { b.disabled = off; });
+    if (off && arm.key && arm.key.indexOf('leave-') === 0) disarm();
   }
 
   function buildCard(n, grid) {
     var posEl = el('div', { class: 'val pos', text: '000' });
     var negEl = el('div', { class: 'val neg', text: '000' });
-    var select = el('select', { onchange: function () { onAssign(n, select.value); } });
-    var warn = el('div', { class: 'card-warn' });
+    var selId = 'pad-j' + n;
+    var select = el('select', { id: selId, onchange: function () { onAssign(n, select.value); } });
+    var warn = el('div', { class: 'card-warn only-mine' });
     var mapBox = el('div');
-    select.className = 'only-mine';
-    warn.className = 'card-warn only-mine';
     var status = el('div', { class: 'card-status only-taken' });
+    var aliasEl = el('span', { class: 'alias hidden' });
+    var leaveBtn = el('button', { class: 'leave-btn only-mine', text: 'Leave', title: 'Give this judge slot back' });
+    leaveBtn.onclick = function () {
+      confirmClick('leave-' + n, leaveBtn, 'Click again to leave', null, null, function () { leaveJudge(n); });
+    };
     var card = el('div', { class: 'card s-free' },
       el('div', { class: 'card-head' },
         el('div', { class: 'card-title', text: 'Judge ' + n }),
-        select,
-        el('button', { class: 'leave-btn only-mine', text: 'Leave', title: 'Give this judge slot back',
-          onclick: function () { leaveJudge(n); } })),
+        aliasEl,
+        el('span', { class: 'tag only-mine', text: 'This device' }),
+        status,
+        leaveBtn),
+      el('div', { class: 'ctrl-row only-mine' },
+        el('label', { for: selId, text: 'Controller' }),
+        select),
+      warn,
+      el('div', { class: 'offline-strip only-mine', text: 'Offline · saving on this device' }),
       el('div', { class: 'join-box only-free' },
         el('button', { text: 'Join as Judge ' + n, onclick: function () { joinJudge(n); } }),
         el('div', { class: 'card-status', text: 'Score as this judge on this device.' })),
-      status,
-      warn,
       el('div', { class: 'counters' }, counter('POS', posEl, 'pos', n), counter('NEG', negEl, 'neg', n)),
       el('details', { class: 'map only-mine' }, el('summary', { text: 'Button mapping' }), mapBox)
     );
     grid.appendChild(card);
-    ui[n] = { card: card, posEl: posEl, negEl: negEl, select: select, warn: warn, mapBox: mapBox, status: status };
+    ui[n] = { card: card, posEl: posEl, negEl: negEl, select: select, warn: warn, mapBox: mapBox, status: status, aliasEl: aliasEl };
+    renderAliases();
     renderMapping(n);
   }
 
@@ -621,20 +896,29 @@
     cache = { eventId: evt.id, state: JSON.parse(JSON.stringify(state)) };
     for (var n = 1; n <= evt.judges; n++) {
       var j = state.judges[n] || { pos: 0, neg: 0 };
-      if (ui[n]) {
-        ui[n].posEl.textContent = fmt(j.pos);
-        ui[n].negEl.textContent = fmt(j.neg);
-      }
+      if (!ui[n]) continue;
+      if (mineList.indexOf(n) >= 0) { reconcile(n, j); showTally(n); continue; }
+      ui[n].posEl.textContent = fmt(j.pos);
+      ui[n].negEl.textContent = fmt(j.neg);
     }
-    var li = $('labelInput');
-    if (document.activeElement !== li) li.value = state.label || '';
     pvState = state;
     renderPreview();
+    renderAliases();
   }
 
   // ------------------------------------------------- stream overlay preview
   // Same layout and number formatting as overlay.html (default options).
   var pvState = null;
+  var clockOffset = 0;
+  function timerText(t) {
+    var e = t.elapsedMs + (t.running ? Math.max(0, Date.now() + clockOffset - t.at) : 0);
+    if (t.durationMs) e = Math.min(e, t.durationMs);
+    var ms = t.direction === 'up' ? e : Math.max(0, t.durationMs - e);
+    var sec = t.direction === 'up' ? Math.floor(ms / 1000) : Math.ceil(ms / 1000);
+    return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+  }
+  var pvTimerSpan = null;
+  setInterval(function () { if (pvTimerSpan && pvState && pvState.timer) pvTimerSpan.textContent = timerText(pvState.timer); }, 200);
   function pvPad3(n) { return String(Math.abs(Math.round(n))).padStart(3, '0'); }
   function pvPad1(n) { return Math.abs(n).toFixed(1).padStart(5, '0'); }
   function pvCell(name, parts) {
@@ -646,27 +930,56 @@
     });
     return d;
   }
+  var DEFAULT_LOOK = { font: 'Share Tech Mono', size: 100, pos: 'bottom', order: ['label', 'judges', 'avg', 'timer'], show: { label: true, timer: true, judges: true, avg: true } };
+  var pvFontLink = null, pvFont = '';
+  function pvUseFont(name) {
+    if (name === pvFont) return;
+    pvFont = name;
+    // Share Tech Mono is already loaded by this page; only fetch other fonts.
+    if (name !== 'Share Tech Mono') {
+      if (!pvFontLink) { pvFontLink = document.createElement('link'); pvFontLink.rel = 'stylesheet'; document.head.appendChild(pvFontLink); }
+      pvFontLink.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(name).replace(/%20/g, '+') + '&display=swap';
+    }
+    $('pvBar').style.fontFamily = "'" + name + "', Consolas, 'Courier New', monospace";
+  }
   function renderPreview() {
     var stage = $('pvStage'), bar = $('pvBar'), grid = $('pvGrid');
     if (!evt || !pvState || !stage.clientWidth) { bar.style.display = 'none'; return; }
-    var n = evt.judges, cells = [], sumPos = 0, sumNeg = 0;
-    if (pvState.label) cells.push(pvCell(null, [pvState.label]));
-    for (var i = 1; i <= n; i++) {
-      var j = pvState.judges[i] || { pos: 0, neg: 0 };
-      sumPos += j.pos; sumNeg += j.neg;
-      cells.push(pvCell('JDG' + i + ':', [(j.pos < 0 ? '-' : '+') + pvPad3(j.pos), (j.neg < 0 ? '+' : '-') + pvPad3(j.neg)]));
-    }
-    var scoreCells = n;
-    if (n > 1) {
-      cells.push(pvCell('AVG:', [(sumPos < 0 ? '-' : '+') + pvPad1(sumPos / n), (sumNeg < 0 ? '+' : '-') + pvPad1(sumNeg / n)]));
-      scoreCells++;
-    }
+    var look = pvState.overlay || DEFAULT_LOOK;
+    pvUseFont(look.font);
+    var n = evt.judges, cells = [], scoreCells = 0;
+    var aliases = pvState.aliases || [];
+    pvTimerSpan = null;
+    look.order.forEach(function (part) {
+      if (!look.show[part]) return;
+      if (part === 'label' && pvState.label) cells.push(pvCell(null, [pvState.label]));
+      if (part === 'timer' && pvState.timer) {
+        var tc = pvCell('TIME:', [timerText(pvState.timer)]);
+        pvTimerSpan = tc.lastChild;
+        cells.push(tc);
+      }
+      if (part === 'judges') {
+        for (var p = 1; p <= n; p++) {
+          var slot = aliases.indexOf(p) >= 0 ? aliases.indexOf(p) + 1 : p;
+          var j = pvState.judges[slot] || { pos: 0, neg: 0 };
+          cells.push(pvCell('JDG' + p + ':', [(j.pos < 0 ? '-' : '+') + pvPad3(j.pos), (j.neg < 0 ? '+' : '-') + pvPad3(j.neg)]));
+          scoreCells++;
+        }
+      }
+      if (part === 'avg' && n > 1) {
+        var sumPos = 0, sumNeg = 0;
+        for (var i = 1; i <= n; i++) { var x = pvState.judges[i] || { pos: 0, neg: 0 }; sumPos += x.pos; sumNeg += x.neg; }
+        cells.push(pvCell('AVG:', [(sumPos < 0 ? '-' : '+') + pvPad1(sumPos / n), (sumNeg < 0 ? '+' : '-') + pvPad1(sumNeg / n)]));
+        scoreCells++;
+      }
+    });
+    if (!cells.length) { bar.style.display = 'none'; return; }
     var rows = scoreCells <= 5 ? 1 : 2;
     grid.style.gridTemplateColumns = 'repeat(' + Math.ceil(cells.length / rows) + ', max-content)';
     grid.textContent = '';
     cells.forEach(function (c) { grid.appendChild(c); });
     bar.style.display = 'block';
-    var fs = stage.clientWidth * 0.0155;
+    var fs = stage.clientWidth * 0.0155 * ((pvState.overlay || DEFAULT_LOOK).size / 100);
     bar.style.fontSize = fs + 'px';
     for (var k = 0; k < 40 && grid.getBoundingClientRect().width > stage.clientWidth * 0.985 && fs > 8; k++) {
       fs *= 0.95;
@@ -674,6 +987,25 @@
     }
   }
   window.addEventListener('resize', renderPreview);
+
+  // Public judge numbers: what each seat appears as on the stream.
+  function renderAliases() {
+    var a = pvState && pvState.aliases ? pvState.aliases : [];
+    var shuffled = a.some(function (v, i) { return v !== i + 1; });
+    Object.keys(ui).forEach(function (k) {
+      var n = Number(k), shownAs = a[n - 1] || n;
+      ui[n].aliasEl.textContent = 'Appears as Judge ' + shownAs;
+      ui[n].aliasEl.classList.toggle('hidden', !shuffled);
+    });
+    $('aliasState').textContent = shuffled ? 'shuffled' : 'in seat order';
+  }
+  $('shuffleBtn').addEventListener('click', function () {
+    if (!isHealthy()) { slotNotice('Not connected, so the numbers can’t be shuffled right now.'); return; }
+    confirmClick('shuffle', this, 'Click again to randomize', null, null, function () {
+      ws.send(JSON.stringify({ type: 'shuffle' }));
+      log('Asked for new public judge numbers.');
+    });
+  });
 
   function flash(n, ok) {
     var card = ui[n] && ui[n].card;
@@ -683,29 +1015,101 @@
     setTimeout(function () { card.classList.remove(cls); }, 160);
   }
 
-  // ------------------------------------------------------------- actions
-  function sendAction(judge, action) {
-    if (!isHealthy() || mineList.indexOf(judge) < 0) return false;
-    ws.send(JSON.stringify({ type: 'action', judge: judge, action: action }));
+  // ------------------------------------------------------ local tally
+  // This device is the source of truth for the judges it holds. Every press is
+  // counted here first and saved in the browser, so scoring keeps working through
+  // a server crash or network drop. The server gets this judge's totals (not
+  // individual presses), so a lost or repeated message can't miscount.
+  // pending = a change the server hasn't confirmed yet.
+  var tally = {};              // n -> { pos, neg, pending, sentAt }
+  var lost = [];               // offline scores that could not be sent (slot taken elsewhere)
+  var orphan = null;           // server no longer accepts this event: keep scoring locally
+
+  function clampScore(v) { return Math.max(-999, Math.min(999, v)); }
+  function tallyKey() { return evt ? 'yoyo.tally.' + evt.id : null; }
+  function saveTally() { var k = tallyKey(); if (k) store.set(k, JSON.stringify(tally)); }
+  function loadTally() {
+    tally = {};
+    var k = tallyKey();
+    if (!k) return;
+    try {
+      var o = JSON.parse(store.get(k) || '{}') || {};
+      Object.keys(o).forEach(function (n) {
+        var t = o[n];
+        if (t && isFinite(t.pos) && isFinite(t.neg) && Number(n) >= 1 && Number(n) <= evt.judges) {
+          tally[n] = { pos: t.pos, neg: t.neg, pending: !!t.pending, sentAt: 0, log: Array.isArray(t.log) ? t.log.slice(-2000) : [] };
+        }
+      });
+    } catch (e) { tally = {}; }
+  }
+  function markAllPending() { Object.keys(tally).forEach(function (k) { tally[k].pending = true; tally[k].sentAt = 0; }); saveTally(); }
+  function showTally(n) {
+    if (!ui[n] || !tally[n]) return;
+    ui[n].posEl.textContent = fmt(tally[n].pos);
+    ui[n].negEl.textContent = fmt(tally[n].neg);
+  }
+  function pushTally(n) {
+    var t = tally[n];
+    if (!t || !isHealthy() || mineList.indexOf(n) < 0) return;
+    ws.send(JSON.stringify({ type: 'set', judge: n, pos: t.pos, neg: t.neg, presses: (t.log || []).slice(0, 300) }));
+    t.sentAt = Date.now();
+  }
+  // Server numbers for a judge this device holds: take them unless we have presses
+  // the server hasn't confirmed (then ours win, e.g. scored during an outage).
+  function reconcile(n, server) {
+    var t = tally[n];
+    if (!t) { tally[n] = { pos: server.pos, neg: server.neg, pending: false, sentAt: 0, log: [] }; saveTally(); return; }
+    if (t.pending) {
+      if (t.pos === server.pos && t.neg === server.neg) { t.pending = false; saveTally(); }
+      return;
+    }
+    if (t.pos !== server.pos || t.neg !== server.neg) { t.pos = server.pos; t.neg = server.neg; saveTally(); }
+  }
+  // A judge this device held is no longer its own; keep any unsent offline scores visible.
+  function dropTally(n, why) {
+    var t = tally[n];
+    if (!t) return;
+    if (t.pending) {
+      lost.push('Judge ' + n + ' ' + why + ' Your offline scores were not sent: POS ' + fmt(t.pos) + ', NEG ' + fmt(t.neg) + '.');
+      log('Judge ' + n + ': unsent offline scores POS ' + fmt(t.pos) + ' NEG ' + fmt(t.neg) + '.');
+    }
+    delete tally[n];
+    saveTally();
+  }
+  // Re-send anything unconfirmed: covers reconnects, restarts and dropped messages.
+  setInterval(function () {
+    Object.keys(tally).forEach(function (k) {
+      var t = tally[k];
+      if ((t.pending || (t.log && t.log.length)) && Date.now() - t.sentAt > 800) pushTally(Number(k));
+    });
+  }, 500);
+
+  // Counts one press for a judge this device holds. Works with or without a server.
+  function press(n, action) {
+    if (mineList.indexOf(n) < 0) return false;
+    var t = tally[n] || (tally[n] = { pos: 0, neg: 0, pending: false, sentAt: 0, log: [] });
+    var key = action.indexOf('pos') === 0 ? 'pos' : 'neg';
+    if (/-reset$/.test(action)) t[key] = 0;
+    else t[key] = clampScore(t[key] + (action.charAt(3) === '+' ? 1 : -1));
+    // For the routine recordings: when this press happened, on the server's clock.
+    (t.log || (t.log = [])).push({ id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36), at: Date.now() + clockOffset, pos: t.pos, neg: t.neg });
+    if (t.log.length > 2000) t.log.splice(0, t.log.length - 2000);
+    t.pending = true;
+    saveTally();
+    showTally(n);
+    pushTally(n);
     return true;
   }
 
   function manual(n, action) {
-    if (!sendAction(n, action)) { flash(n, false); updateBanners(); }
+    if (!press(n, action)) { flash(n, false); updateBanners(); }
   }
 
-  var labelTimer = null;
-  $('labelInput').addEventListener('input', function () {
-    clearTimeout(labelTimer);
-    var v = this.value;
-    labelTimer = setTimeout(function () {
-      if (isHealthy()) ws.send(JSON.stringify({ type: 'label', text: v }));
-    }, 300);
-  });
-  $('labelClear').addEventListener('click', function () {
-    $('labelInput').value = '';
-    if (isHealthy()) ws.send(JSON.stringify({ type: 'label', text: '' }));
-  });
+  // Lets a reloaded page (even with no server) bring back this device's judges.
+  function saveSession() {
+    if (evt) store.set('yoyo.session', JSON.stringify({ code: currentCode, evt: evt, mine: mineList, taken: takenList }));
+  }
+
 
   // ---------------------------------------------------------- mapping UI
   function renderMapping(n) {
@@ -719,7 +1123,7 @@
       if (!list.length) chips.appendChild(el('span', { class: 'chip-empty', text: 'unmapped' }));
       list.forEach(function (idx, i) {
         chips.appendChild(el('span', { class: 'chip' }, buttonName(idx),
-          el('span', { class: 'x', text: '×', onclick: function () {
+          el('button', { class: 'x', text: '×', 'aria-label': 'Remove ' + buttonName(idx) + ' from ' + ACTION_LABELS[action], onclick: function () {
             mapping[action].splice(i, 1);
             saveMappings();
             renderMapping(n);
@@ -901,8 +1305,8 @@
           if (mapping[ACTIONS[a]].indexOf(idx) !== -1) { action = ACTIONS[a]; break; }
         }
         if (!action) continue;
-        var ok = sendAction(judge, action);
-        vibrate(pad, ok ? hapticMs : 350); // long buzz = press was NOT recorded
+        var ok = press(judge, action);
+        vibrate(pad, ok ? hapticMs : 350); // presses count offline too; long buzz only if not this device's judge
         flash(judge, ok);
         if (!ok) updateBanners();
       }
@@ -917,10 +1321,18 @@
 
   // ------------------------------------------------------------- banners
   function updateBanners() {
-    var box = $('banners');
+    syncSetup();
+    syncOffline();
     var items = [];
-    if (wantConnected && !isHealthy()) {
-      items.push(['err', '⚠ NOT CONNECTED to the server — scores are NOT being recorded. Reconnecting automatically…']);
+    lost.forEach(function (t) { items.push(['err', t]); });
+    if (orphan) {
+      items.push(['err', 'The server no longer accepts this event (' + orphan.replace(/\.$/, '') + '). Keep scoring: your numbers are saved on this device. Give the operator the final scores by hand.']);
+    } else if (wantConnected && !isHealthy()) {
+      if (evt && (mineList.length || Object.keys(tally).length)) {
+        items.push(['offline', 'Offline. Keep scoring: your numbers are saved on this device and will be sent when the connection returns. The stream overlay is paused.']);
+      } else {
+        items.push(['err', 'Not connected to the server. Reconnecting automatically…']);
+      }
     }
     if (connected && focusLost) {
       items.push(['warn', '⚠ This window is not in focus — controller input is paused. Click anywhere on this page.']);
@@ -943,9 +1355,18 @@
         }
       }
     }
-    box.textContent = '';
-    items.forEach(function (it) { box.appendChild(el('div', { class: 'banner ' + it[0], text: it[1] })); });
+    // Rebuild only on change, so screen readers announce each banner once.
+    var sig = JSON.stringify(items);
+    if (sig === bannerSig) return;
+    bannerSig = sig;
+    var errBox = $('bannersErr'), infoBox = $('bannersInfo');
+    errBox.textContent = '';
+    infoBox.textContent = '';
+    items.forEach(function (it) {
+      (it[0] === 'err' || it[0] === 'offline' ? errBox : infoBox).appendChild(el('div', { class: 'banner ' + it[0], text: it[1] }));
+    });
   }
+  var bannerSig = '';
 
   function checkFocus() {
     var lost = document.visibilityState !== 'visible' || !document.hasFocus();
@@ -964,12 +1385,41 @@
   }
   $('connectBtn').addEventListener('click', submitCode);
   $('codeInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitCode(); });
-  $('disconnectBtn').addEventListener('click', function () { disconnect(true); });
+  $('disconnectBtn').addEventListener('click', function () {
+    confirmClick('disconnect', this, 'Click again to disconnect', null, null, function () { disconnect(true); });
+  });
+
+  // After a reload, bring back this device's judges and numbers before (or without)
+  // reaching the server, so a refresh mid-performance loses nothing.
+  function normCode(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+  function restoreSession(code) {
+    var s = null;
+    try { s = JSON.parse(store.get('yoyo.session') || 'null'); } catch (e) { s = null; }
+    if (!s || !s.evt || normCode(s.code) !== normCode(code)) return;
+    evt = s.evt;
+    currentCode = code;
+    buildJudges(evt.judges);
+    loadTally();
+    markAllPending(); // the server may have restarted while this page was closed
+    loadWanted(evt.id);
+    (s.mine || []).forEach(function (j) { wanted[j] = true; });
+    Object.keys(tally).forEach(function (j) { wanted[j] = true; });
+    saveWanted();
+    showEvent();
+    applySlots(s.taken || [], s.mine || [], true);
+    log('Restored this device\'s judges and scores from before the page reloaded.');
+  }
+
+  // Keep a copy of this page in the browser so it can reload while the server is down.
+  try {
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/score-sw.js', { scope: '/score' }).catch(function () { /* optional */ });
+  } catch (e) { /* optional */ }
 
   var urlCode = new URLSearchParams(location.search).get('code');
   var startCode = urlCode || store.get('yoyo.code') || '';
   if (startCode) {
     $('codeInput').value = startCode;
+    restoreSession(startCode);
     connect(startCode);
   }
   updatePills();

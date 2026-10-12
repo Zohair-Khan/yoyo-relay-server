@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Timer · Yo-Yo Event Management</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap">
+<style>
+  /*
+   * Timer display for a screen the judges, the competitor or the audience can see.
+   *   URL: /timer/<view key>     (the same private key as the overlay)
+   *   ?name=0   hide who's performing
+   */
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: #0b0b0b; color: #fff; overflow: hidden;
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh;
+  }
+  .hidden { display: none !important; }
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; color: #8f8f8f; font-size: 15px; }
+  #eventName { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #fsBtn {
+    font: inherit; font-size: 14px; font-weight: 600; color: #ddd; background: #262626; border: 0; border-radius: 6px;
+    padding: 8px 14px; cursor: pointer; transition: opacity .4s ease-out;
+  }
+  #fsBtn:hover { background: #333; }
+  #fsBtn:focus-visible { outline: 2px solid #64b5f6; outline-offset: 2px; }
+  body.idle-ui #fsBtn { opacity: 0; }
+
+  main { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; padding: 0 3vw; text-align: center; }
+  #time {
+    font-family: 'Share Tech Mono', Consolas, monospace; font-variant-numeric: tabular-nums;
+    font-size: min(36vw, 62vh); line-height: .9; letter-spacing: -0.02em; white-space: nowrap;
+    color: #fff; transition: color .3s ease-out;
+  }
+  #time.idle { color: #6b6b6b; }
+  #time.low { color: #ffd54f; }
+  #time.out { color: #ef5350; }
+  #who { margin-top: 3vh; max-width: 92vw; }
+  #name { font-size: min(6.5vw, 9vh); font-weight: 800; line-height: 1.1; overflow-wrap: anywhere; }
+  #division { font-size: min(3.4vw, 5vh); color: #9e9e9e; font-weight: 600; margin-top: 1vh; }
+  #waiting { font-size: min(3vw, 4.5vh); color: #8f8f8f; margin-top: 3vh; }
+
+  .foot { display: flex; justify-content: flex-end; padding: 12px 24px; font-size: 14px; min-height: 44px; }
+  #conn { color: #ffd54f; font-weight: 600; }
+  #error { font-size: min(4vw, 28px); color: #ef9a9a; max-width: 800px; line-height: 1.4; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <span id="eventName"></span>
+    <button id="fsBtn" type="button">Full screen</button>
+  </div>
+  <main>
+    <div id="time" class="idle" role="timer" aria-live="off">--:--</div>
+    <div id="who">
+      <div id="name"></div>
+      <div id="division"></div>
+    </div>
+    <div id="waiting">Waiting for the next performance</div>
+    <div id="error" class="hidden" role="alert"></div>
+  </main>
+  <div class="foot"><span id="conn" role="status"></span></div>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  var q = new URLSearchParams(location.search);
+  var key = decodeURIComponent(location.pathname.replace(/^\/timer\/?/, '')) || q.get('key') || '';
+  var showName = q.get('name') !== '0';
+
+  var state = null, clockOffset = 0, healthy = false, failed = false;
+
+  // Same reading as the overlay: the music page sets it, the server stamps it with its clock.
+  function remainingOrElapsed(t) {
+    var e = t.elapsedMs + (t.running ? Math.max(0, Date.now() + clockOffset - t.at) : 0);
+    if (t.durationMs) e = Math.min(e, t.durationMs);
+    return { ms: t.direction === 'up' ? e : Math.max(0, t.durationMs - e), elapsed: e };
+  }
+  function render() {
+    if (failed) return;
+    var t = state && state.timer;
+    var time = $('time');
+    if (!t) {
+      time.textContent = '--:--';
+      time.className = 'idle';
+    } else {
+      var r = remainingOrElapsed(t);
+      var sec = t.direction === 'up' ? Math.floor(r.ms / 1000) : Math.ceil(r.ms / 1000);
+      time.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+      var left = t.durationMs ? t.durationMs - r.elapsed : Infinity;
+      time.className = !t.running && !t.elapsedMs ? 'idle'
+        : t.durationMs && left <= 0 ? 'out'
+        : t.durationMs && left <= 10000 ? 'low' : '';
+    }
+    var p = state && state.performer;
+    $('who').classList.toggle('hidden', !showName || !p);
+    $('name').textContent = p ? p.name : '';
+    $('division').textContent = p ? p.division : '';
+    $('waiting').classList.toggle('hidden', !!t || !!(showName && p));
+  }
+  setInterval(render, 100);
+
+  // ---- connection (same pattern as the overlay)
+  var WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  var BACKOFF = [500, 1000, 2000, 3000, 5000];
+  var ws = null, backoffIdx = 0, reconnectTimer = null, lastMsgAt = 0, connectingSince = 0;
+  function setConn(text) { $('conn').textContent = text; }
+  function scheduleReconnect(delay) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(openSocket, delay || BACKOFF[Math.min(backoffIdx++, BACKOFF.length - 1)]);
+  }
+  function openSocket() {
+    clearTimeout(reconnectTimer);
+    if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { /* ignore */ } }
+    var mine = new WebSocket(WS_URL);
+    ws = mine;
+    connectingSince = Date.now();
+    var retryAfter = 0;
+    mine.onopen = function () { lastMsgAt = Date.now(); mine.send(JSON.stringify({ type: 'hello', role: 'display', key: key })); };
+    mine.onmessage = function (e) {
+      if (mine !== ws) return;
+      lastMsgAt = Date.now();
+      var msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
+      if (typeof msg.now === 'number') clockOffset = msg.now - Date.now();
+      if (msg.type === 'ready') {
+        backoffIdx = 0; connectingSince = 0; healthy = true;
+        state = msg.state;
+        $('eventName').textContent = msg.event.name;
+        $('error').classList.add('hidden');
+        $('time').classList.remove('hidden');
+        failed = false;
+        setConn('');
+      } else if (msg.type === 'state') {
+        state = msg.state;
+      } else if (msg.type === 'error') {
+        retryAfter = 30000; // bad link / expired / disabled: try again slowly
+        if (!state) {
+          failed = true;
+          $('error').textContent = msg.message + ' Ask the organizer for the timer display link.';
+          $('error').classList.remove('hidden');
+          $('time').classList.add('hidden');
+          $('waiting').classList.add('hidden');
+        }
+      }
+    };
+    mine.onclose = function () {
+      if (mine !== ws) return;
+      ws = null; healthy = false;
+      if (state) setConn('Reconnecting… the timer may be behind');
+      scheduleReconnect(retryAfter);
+    };
+    mine.onerror = function () { /* onclose handles retry */ };
+  }
+  setInterval(function () {
+    if (!ws) return;
+    var now = Date.now();
+    if (ws.readyState === 1 && now - lastMsgAt > 8000) ws.close();
+    else if (ws.readyState === 0 && connectingSince && now - connectingSince > 10000) ws.close();
+  }, 2000);
+  window.addEventListener('online', function () { backoffIdx = 0; openSocket(); });
+
+  // ---- full screen, keep the screen awake, hide the button when idle
+  $('fsBtn').onclick = function () {
+    var d = document;
+    if (d.fullscreenElement) d.exitFullscreen().catch(function () {});
+    else d.documentElement.requestFullscreen().catch(function () {});
+  };
+  document.addEventListener('fullscreenchange', function () { $('fsBtn').textContent = document.fullscreenElement ? 'Exit full screen' : 'Full screen'; });
+  var idleTimer = null;
+  function wake() { document.body.classList.remove('idle-ui'); clearTimeout(idleTimer); idleTimer = setTimeout(function () { document.body.classList.add('idle-ui'); }, 3000); }
+  ['mousemove', 'keydown', 'touchstart'].forEach(function (ev) { document.addEventListener(ev, wake); });
+  wake();
+  var lock = null;
+  function keepAwake() {
+    try {
+      if ('wakeLock' in navigator && !lock) navigator.wakeLock.request('screen').then(function (l) { lock = l; l.addEventListener('release', function () { lock = null; }); }).catch(function () {});
+    } catch (e) { /* optional */ }
+  }
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') keepAwake(); });
+  keepAwake();
+
+  if (!key) {
+    failed = true;
+    $('error').textContent = 'This link is missing its key. Ask the organizer for the timer display link.';
+    $('error').classList.remove('hidden');
+    $('time').classList.add('hidden');
+    $('waiting').classList.add('hidden');
+  } else {
+    openSocket();
+  }
+  render();
+})();
+</script>
+</body>
+</html>

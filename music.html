@@ -1,0 +1,1936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Music · Yo-Yo Event Management</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap">
+<style>
+  /* spacing scale (4px base), shared with the scoring and admin pages */
+  :root { --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #1a1a1a; color: #eee; margin: 0; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 0 var(--s4) var(--s7); }
+  .hidden { display: none !important; }
+  h1, h2, h3 { margin: 0; }
+  ::placeholder { color: #8f8f8f; opacity: 1; }
+
+  label { display: block; font-size: 12px; color: #aaa; margin-bottom: var(--s1); }
+  input[type=text], textarea, select {
+    padding: 8px 10px; border-radius: 6px; border: 1px solid #3a3a3a; background: #1a1a1a; color: #eee;
+    font: inherit; font-size: 14px; max-width: 100%;
+  }
+  textarea { width: 100%; min-height: 120px; resize: vertical; line-height: 1.5; }
+  button {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px 14px; border: none; border-radius: 6px; font: inherit; font-size: 14px; font-weight: 600;
+    cursor: pointer; background: #1565c0; color: #fff; white-space: nowrap;
+  }
+  button:disabled { background: #444; color: #888; cursor: not-allowed; }
+  button:not(:disabled):hover { filter: brightness(1.15); }
+  button:not(:disabled):active { filter: brightness(.9); }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, .seg input:focus-visible + span, a:focus-visible {
+    outline: 2px solid #64b5f6; outline-offset: 2px;
+  }
+  .btn-grey { background: #444; }
+  .btn-green { background: #2e7d32; }
+  .btn-red { background: #c62828; }
+  .btn-small { padding: 5px 10px; font-size: 13px; }
+  .btn-icon { padding: 6px; width: 32px; height: 32px; background: #333; }
+  button.armed { background: #c62828; }
+  svg.i { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  svg.i.fill { fill: currentColor; stroke: none; }
+  .row { display: flex; gap: var(--s2) var(--s3); align-items: flex-end; flex-wrap: wrap; }
+  .panel { background: #242424; border-radius: 10px; padding: var(--s4); }
+  .muted { color: #999; font-size: 12px; }
+
+  /* sticky header: event + page links + connection; banners stay visible while scrolled */
+  .top { position: sticky; top: 0; z-index: 10; background: #1a1a1a; padding: var(--s3) 0 var(--s1); border-bottom: 1px solid #2a2a2a; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s2) var(--s4); margin-bottom: var(--s2); }
+  .top-id { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s1) var(--s3); min-width: 0; }
+  .top h1 { font-size: 13px; font-weight: 600; color: #aaa; white-space: nowrap; }
+  .page-name { color: #ddd; }
+  #eventName { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+  .pages { display: flex; gap: var(--s1); flex-wrap: wrap; }
+  .pages a { color: #bbb; text-decoration: none; font-size: 13px; font-weight: 600; padding: 5px 10px; border-radius: 6px; }
+  .pages a:hover { background: #2c2c2c; color: #fff; }
+  .pages a[aria-current="page"] { background: #2c2c2c; color: #fff; box-shadow: inset 0 -2px 0 #1565c0; }
+  .pills { display: flex; gap: var(--s2); flex-wrap: wrap; }
+  .pill { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: #444; color: #ddd; white-space: nowrap; }
+  .pill-ok { background: #2e7d32; color: #fff; }
+  .pill-warn { background: #f9a825; color: #000; }
+  /* info notices: one at a time, in a toast that never moves the deck */
+  #toast { position: fixed; right: var(--s4); bottom: calc(var(--s4) + env(safe-area-inset-bottom, 0px)); z-index: 20; max-width: min(420px, calc(100vw - 32px));
+    padding: 12px 14px; border-radius: 8px; background: #12304d; border: 1px solid #1565c0; color: #cfe3ff; font-size: 14px; line-height: 1.4;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45); transition: opacity .25s ease-out, transform .25s ease-out; }
+  #toast.gone { opacity: 0; transform: translateY(8px); pointer-events: none; }
+  #banners .banner { padding: 10px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-bottom: var(--s2); }
+  .banner.err { background: #7f1d1d; border: 1px solid #ef5350; color: #ffd6d6; }
+  .banner.warn, .banner.offline { background: #4a3600; border: 1px solid #f9a825; color: #ffd54f; }
+  .banner.info { background: #12304d; border: 1px solid #1565c0; color: #cfe3ff; font-weight: 400; }
+
+  /* connect */
+  #connectPanel { margin-top: var(--s6); max-width: 560px; }
+  #connectPanel h2 { font-size: 14px; color: #ccc; margin-bottom: var(--s3); }
+  #codeInput { width: 280px; }
+  #connectMsg { margin-top: var(--s2); font-size: 13px; color: #ef9a9a; }
+  #connectMsg:empty { display: none; }
+
+  /* layout: divisions, setup and device in the left column; deck + running order in the main column.
+     Narrow (half a laptop screen beside OBS): divisions become chips above the deck, setup goes below. */
+  .layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); grid-template-rows: auto auto auto 1fr; gap: var(--s5); margin-top: var(--s5); align-items: start; }
+  .r-divs { grid-column: 1; grid-row: 1; }
+  .r-setup { grid-column: 1; grid-row: 2; }
+  .r-device { grid-column: 1; grid-row: 3; }
+  .main { grid-column: 2; grid-row: 1 / span 4; display: flex; flex-direction: column; gap: var(--s6); min-width: 0; }
+  .r-divs h2, .sec-title { font-size: 14px; font-weight: 600; color: #ccc; }
+
+  /* division list */
+  .div-list { list-style: none; margin: var(--s3) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s1); }
+  .div-btn {
+    width: 100%; justify-content: space-between; background: transparent; color: #ddd; font-weight: 600;
+    padding: 10px 12px; border: 1px solid transparent; text-align: left;
+  }
+  .div-btn .name { overflow: hidden; text-overflow: ellipsis; }
+  .div-btn .count { font-size: 12px; font-weight: 400; color: #999; }
+  .div-btn:not(:disabled):hover { background: #2c2c2c; filter: none; }
+  .div-btn.current { background: #12304d; border-color: #1565c0; color: #fff; }
+  .div-btn.current .count { color: #cfe3ff; }
+  .div-btn .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #66bb6a; margin-right: 6px; flex-shrink: 0; }
+  .add-div { display: flex; gap: var(--s2); margin-top: var(--s3); }
+  .add-div input { flex: 1; min-width: 0; }
+  .empty { color: #999; font-size: 13px; line-height: 1.5; }
+
+  details.drawer > summary { cursor: pointer; font-size: 14px; font-weight: 600; color: #ccc; }
+  details.drawer[open] > summary { margin-bottom: var(--s3); }
+  .setup-block + .setup-block { margin-top: var(--s4); padding-top: var(--s4); border-top: 1px solid #333; }
+  .cue-row { min-width: 0; }
+  .cue-row .file { font-size: 13px; color: #ddd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+  .cue-btns { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s2); margin-top: var(--s2); }
+  .cue-row .file.missing { color: #ffb74d; }
+  .cue-row + .cue-row { margin-top: var(--s3); }
+  .hint { font-size: 12px; color: #999; line-height: 1.5; margin: var(--s2) 0 0; }
+
+  /* deck: what's on stream + what plays now */
+  .deck { display: flex; flex-direction: column; gap: var(--s4); }
+  .stream-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s2); margin-bottom: var(--s2); }
+  .stream-head .state { font-size: 12px; color: #999; }
+  .stream-head .state.pending { color: #ffd54f; }
+  /* stream preview: same layout and number formatting as overlay.html (default options) */
+  #pvStage { border-radius: 6px; overflow: hidden; padding-top: 30px; display: flex; flex-direction: column; justify-content: flex-end;
+    background: repeating-conic-gradient(#2b2b2b 0 25%, #212121 0 50%) 0 0 / 18px 18px; }
+  #pvBar { display: none; box-sizing: border-box; padding: 0.3em 0.6em; color: #fff; background: rgba(0, 0, 0, 0.72);
+    font-family: 'Share Tech Mono', Consolas, 'Courier New', monospace; line-height: 1.15; text-transform: uppercase; white-space: nowrap; }
+  #pvGrid { display: grid; width: max-content; margin: 0 auto; column-gap: 1.4em; row-gap: 0.1em; justify-items: start; }
+  #pvGrid .name { opacity: 0.85; margin-right: 0.4em; }
+  #pvBlank { color: #a6a6a6; font-size: 13px; padding: 10px 12px; }
+  .stream-ctl { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s2) var(--s4); margin-top: var(--s3); }
+  #lenWarn { font-size: 12px; color: #ffd54f; }
+  #lenWarn:empty { display: none; }
+
+  fieldset.seg { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: var(--s1) var(--s3); }
+  fieldset.seg legend { float: left; font-size: 12px; color: #aaa; padding: 0; }
+  .seg-opts { display: flex; }
+  .seg label { margin: 0; }
+  .seg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .seg span { display: block; padding: 7px 12px; font-size: 13px; font-weight: 600; color: #ccc; cursor: pointer; white-space: nowrap; border: 1px solid #3a3a3a; }
+  .seg label + label span { margin-left: -1px; }
+  .seg label:first-child span { border-radius: 6px 0 0 6px; }
+  .seg label:last-child span { border-radius: 0 6px 6px 0; }
+  .seg span:hover { background: #2c2c2c; }
+  .seg input:checked + span { background: #1565c0; border-color: #1565c0; color: #fff; position: relative; }
+
+  .now { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--s3) var(--s5); align-items: center; padding-top: var(--s4); border-top: 1px solid #333; }
+  .now-name { font-size: 30px; font-weight: 800; line-height: 1.15; margin: var(--s1) 0; overflow-wrap: anywhere; }
+  .now-name.none { font-size: 18px; font-weight: 600; color: #999; }
+  .now-name .from-file { font-weight: 600; color: #bbb; }
+  .now-track { font-size: 13px; color: #bbb; overflow-wrap: anywhere; line-height: 1.8; }
+  .now-track .tag { margin-right: 4px; vertical-align: 1px; }
+  .now-track .missing { color: #ffb74d; }
+  .deck-timer { text-align: right; }
+  .deck-timer .t { font-family: 'Share Tech Mono', Consolas, monospace; font-size: 44px; line-height: 1; color: #fff; font-variant-numeric: tabular-nums; }
+  .deck-timer .t.idle { color: #777; }
+  .deck-timer .t.low { color: #ffd54f; }
+  .deck-timer .t.out { color: #ef5350; }
+  .deck-timer .sub { font-size: 12px; color: #999; margin-top: var(--s1); }
+  .now-actions { display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: flex-end; }
+  #startBtn { padding: 14px 28px; font-size: 18px; }
+  .play-status { font-size: 15px; font-weight: 600; min-height: 1.4em; }
+  .play-status.idle { color: #999; }
+  .play-status.cue { color: #ffd54f; }
+  .play-status.track { color: #66bb6a; }
+  .play-status.error { color: #ef9a9a; }
+  .transport { display: flex; align-items: center; gap: var(--s2) var(--s3); flex-wrap: wrap; }
+  .transport input[type=range] { flex: 1 1 200px; min-width: 0; accent-color: #1565c0; }
+  .time { font-family: 'Share Tech Mono', Consolas, monospace; font-size: 14px; color: #bbb; min-width: 3.2em; text-align: center; }
+  .up-next { font-size: 13px; color: #999; }
+  .up-next strong { color: #ddd; font-weight: 600; }
+
+  /* division: settings + running order */
+  .div-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s2) var(--s3); margin-bottom: var(--s3); }
+  .div-head h2 { font-size: 20px; font-weight: 800; overflow-wrap: anywhere; }
+  .div-title { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2) var(--s3); min-width: 0; }
+  .div-tools { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; }
+  #filterInput { width: 220px; }
+  .div-settings { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s5); padding: var(--s3) var(--s4); background: #202020; border-radius: 8px; margin-bottom: var(--s4); }
+  .limit { display: flex; align-items: center; gap: var(--s2); }
+  .limit label { margin: 0; font-size: 12px; color: #aaa; }
+  #limitInput { width: 84px; font-family: 'Share Tech Mono', Consolas, monospace; text-align: center; }
+  #limitNote { font-size: 12px; color: #999; }
+  #limitNote.bad { color: #ef9a9a; }
+
+  .steps { display: flex; flex-wrap: wrap; gap: var(--s2); margin-bottom: var(--s3); }
+  .run { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s1); }
+  .comp {
+    display: grid; grid-template-columns: 2.4em minmax(0, 1.2fr) minmax(0, 1fr) auto auto; gap: var(--s3);
+    align-items: center; padding: 10px 12px; background: #242424; border: 1px solid #333; border-radius: 8px;
+  }
+  .comp .num { font-family: 'Share Tech Mono', Consolas, monospace; color: #999; font-size: 15px; }
+  .comp .cname { font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
+  .comp .cname.from-file { font-weight: 600; color: #bbb; }
+  .comp .cname .src { font-size: 11px; font-weight: 400; color: #999; margin-left: 6px; white-space: nowrap; }
+  .comp .ctrack { font-size: 13px; color: #bbb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .comp .ctrack.missing { color: #ffb74d; }
+  .tag { font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; white-space: nowrap; }
+  .tag.done { background: #333; color: #bbb; }
+  .tag.queued { background: #1565c0; color: #fff; }
+  .tag.playing { background: #2e7d32; color: #fff; }
+  .comp.is-done .num, .comp.is-done .cname, .comp.is-done .ctrack { opacity: .6; }
+  .comp.is-queued { border-color: #1565c0; background: #12304d; }
+  .comp.is-playing { border-color: #2e7d32; background: #17301a; }
+  .comp .state-cell { min-width: 5.5em; display: flex; justify-content: flex-end; }
+  /* edit mode: name, track and order become editable */
+  .comp.editing input[type=text], .comp.editing select { width: 100%; }
+  .edit-tools { display: flex; gap: var(--s1); align-items: center; }
+  .done-check { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: #ccc; white-space: nowrap; }
+  .edit-bar { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
+
+  .names { margin-top: var(--s4); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s4); }
+  .names .panel { padding: var(--s3) var(--s4); }
+  .names h3 { font-size: 13px; font-weight: 600; color: #ccc; margin-bottom: var(--s2); }
+  .names .row input[type=text] { flex: 1 1 200px; }
+  .check { display: flex; align-items: center; gap: 6px; margin: var(--s2) 0 0; font-size: 13px; color: #ccc; }
+
+  /* overlay look */
+  .look { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s4) var(--s6); }
+  .look-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2) var(--s3); }
+  .look-row label { margin: 0; min-width: 5.5em; }
+  #fontSel { min-width: 180px; }
+  #fontOther { flex: 1 1 160px; }
+  #sizeRange { flex: 1 1 160px; accent-color: #1565c0; }
+  #sizeOut { font-family: 'Share Tech Mono', Consolas, monospace; min-width: 3.5em; color: #ddd; }
+  .parts { list-style: none; margin: var(--s2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s1); }
+  .parts li { display: grid; grid-template-columns: 1.6em minmax(0, 1fr) auto auto; align-items: center; gap: var(--s2); padding: 6px 8px; background: #1e1e1e; border-radius: 6px; }
+  .parts .pn { font-family: 'Share Tech Mono', Consolas, monospace; color: #999; }
+  .parts .pl { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; color: #ddd; }
+  .parts li.off .pl { color: #8f8f8f; }
+  .look-foot { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin-top: auto; padding-top: var(--s2); }
+  .look-foot .state { font-size: 12px; color: #999; }
+  .look-foot .state.pending { color: #ffd54f; }
+
+  /* recorded routines */
+  .rec-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; }
+  .replay-link { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s3); }
+  .replay-link code { flex: 1 1 260px; min-width: 0; font-family: Consolas, monospace; font-size: 13px; background: #1a1a1a; padding: 6px 8px; border-radius: 6px; word-break: break-all; color: #ddd; }
+  .recs { list-style: none; margin: var(--s4) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s1); }
+  .rec { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--s3); align-items: center; padding: 8px 12px; background: #1e1e1e; border-radius: 8px; border: 1px solid transparent; }
+  .rec.on { border-color: #2e7d32; background: #17301a; }
+  .rec .rn { font-weight: 700; overflow-wrap: anywhere; }
+  .rec .rm { font-size: 12px; color: #999; margin-top: 2px; }
+  .rec .rp { font-family: 'Share Tech Mono', Consolas, monospace; color: #a5d6a7; font-size: 14px; }
+
+  .device-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s3); }
+  #logBox { margin-top: var(--s5); }
+  #logBox summary { cursor: pointer; font-size: 13px; color: #aaa; }
+  #log { max-height: 180px; overflow-y: auto; font-size: 12px; color: #aaa; white-space: pre-wrap; margin: var(--s2) 0 0 0; }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+    .r-divs, .r-setup, .r-device, .main { grid-column: 1; grid-row: auto; }
+    .div-list { flex-direction: row; flex-wrap: wrap; gap: var(--s2); }
+    .div-btn { width: auto; gap: var(--s3); border-color: #333; }
+    .add-div { max-width: 360px; }
+    .now { grid-template-columns: minmax(0, 1fr) auto; }
+    .now-actions { grid-column: 1 / -1; justify-content: flex-start; }
+    .names { grid-template-columns: minmax(0, 1fr); }
+    .look { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 600px) {
+    .top h1 { font-size: 12px; white-space: normal; }
+    #codeInput { width: 100%; }
+    .div-tools { flex: 1 1 100%; }
+    #filterInput { flex: 1; width: auto; min-width: 0; }
+    .now-actions { display: grid; grid-template-columns: 1fr 1fr; }
+    #startBtn { grid-column: 1 / -1; }
+    .deck-timer .t { font-size: 34px; }
+    .transport { display: grid; grid-template-columns: auto auto 1fr 1fr auto; }
+    .transport input[type=range] { grid-column: 1 / -1; grid-row: 2; }
+    .up-next { grid-column: 1 / -1; grid-row: 3; }
+    #queueNextBtn { grid-column: 1 / -1; grid-row: 4; }
+    #durTime { text-align: right; }
+    #curTime { text-align: left; }
+    .comp { grid-template-columns: 2em minmax(0, 1fr) auto; row-gap: var(--s1); }
+    .comp .num { grid-column: 1; grid-row: 1; }
+    .comp .cname { grid-column: 2; grid-row: 1; }
+    .comp .qbtn { grid-column: 3; grid-row: 1; }
+    .comp .ctrack { grid-column: 2; grid-row: 2; }
+    .comp .state-cell { grid-column: 3; grid-row: 2; }
+    .comp.editing > input { grid-column: 2 / -1; grid-row: 1; }
+    .comp.editing .tcell { grid-column: 2 / -1; grid-row: 2; }
+    .comp.editing .done-check { grid-column: 2; grid-row: 3; }
+    .comp.editing .edit-tools { grid-column: 3; grid-row: 3; }
+    .seg-opts { flex-wrap: wrap; }
+    .now-name { font-size: 24px; }
+    #pvStage { overflow-x: auto; }
+    #pvBar { width: max-content; min-width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="topbar">
+      <div class="top-id">
+        <h1>Yo-Yo Event Management <span class="page-name">· Music</span></h1>
+        <div id="eventHead" class="hidden"><span id="eventName"></span></div>
+      </div>
+      <nav class="pages hidden" id="pageNav" aria-label="Event pages">
+        <a id="navHome" href="/">All pages</a>
+        <a id="navScore">Judging</a>
+        <a id="navMusic" aria-current="page">Music</a>
+        <a id="navTimer" target="_blank" rel="noopener">Timer display</a>
+      </nav>
+      <div class="pills">
+        <span class="pill" id="connPill">Not connected</span>
+        <span class="pill" id="overlayPill">Overlay: —</span>
+      </div>
+    </div>
+    <div id="banners">
+      <div id="bannersErr" role="alert"></div>
+      <div id="bannersInfo" role="status"></div>
+    </div>
+  </header>
+
+  <div class="panel" id="connectPanel">
+    <h2>Enter the event code</h2>
+    <div class="row">
+      <div>
+        <label for="codeInput">Event code (the same one the judges use)</label>
+        <input type="text" id="codeInput" autocomplete="off" spellcheck="false" placeholder="WORD-WORD-WORD-00">
+      </div>
+      <button id="connectBtn">Connect</button>
+    </div>
+    <div id="connectMsg" role="alert"></div>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="layout">
+      <section class="r-divs" aria-labelledby="divTitle">
+        <h2 id="divTitle">Divisions</h2>
+        <ul class="div-list" id="divList"></ul>
+        <div class="empty hidden" id="divEmpty">No divisions yet. Add one below, or import a music folder from Setup.</div>
+        <form class="add-div" id="addDivForm">
+          <input type="text" id="newDivName" maxlength="40" placeholder="e.g. 1A Pro" aria-label="New division name">
+          <button type="submit" class="btn-grey">Add</button>
+        </form>
+      </section>
+
+      <main class="main">
+        <section class="panel deck" aria-label="On stream and playback">
+          <div>
+            <div class="stream-head"><h2 class="sec-title">On stream</h2><span class="state" id="streamState"></span></div>
+            <div id="pvStage"><div id="pvBar"><div id="pvGrid"></div></div><div id="pvBlank">Waiting for the event’s scores…</div></div>
+            <div class="stream-ctl">
+              <fieldset class="seg">
+                <legend>Overlay name shows</legend>
+                <div class="seg-opts">
+                  <label><input type="radio" name="fmt" value="both"><span>Division: Name</span></label>
+                  <label><input type="radio" name="fmt" value="name"><span>Name</span></label>
+                  <label><input type="radio" name="fmt" value="division"><span>Division</span></label>
+                  <label><input type="radio" name="fmt" value="none"><span>Nothing</span></label>
+                </div>
+              </fieldset>
+              <div id="lenWarn"></div>
+            </div>
+          </div>
+
+          <div class="now">
+            <div>
+              <div class="now-name none" id="nowName">Nothing queued</div>
+              <div class="now-track" id="nowTrack">Pick a division, then press Queue on a competitor.</div>
+            </div>
+            <div class="deck-timer" aria-live="off">
+              <div class="t idle" id="deckTime">0:00</div>
+              <div class="sub" id="deckTimeSub">Timer</div>
+            </div>
+            <div class="now-actions">
+              <button class="btn-green" id="startBtn" disabled></button>
+              <button class="btn-grey" id="skipBtn" disabled>Skip to end cue</button>
+              <button class="btn-red" id="stopBtn" disabled></button>
+            </div>
+          </div>
+
+          <div class="play-status idle" id="playStatus" role="status"></div>
+          <div class="transport">
+            <button class="btn-icon" id="playPauseBtn" disabled aria-label="Pause"></button>
+            <button class="btn-grey btn-small" id="backBtn" disabled>−10s</button>
+            <span class="time" id="curTime">0:00</span>
+            <input type="range" id="seekBar" min="0" max="100" value="0" step="0.1" disabled aria-label="Position in the current audio">
+            <span class="time" id="durTime">0:00</span>
+            <button class="btn-grey btn-small" id="fwdBtn" disabled>+10s</button>
+            <span class="up-next" id="upNext"></span>
+            <button id="queueNextBtn" disabled>Queue next</button>
+          </div>
+        </section>
+
+        <details class="panel drawer" id="lookBox">
+          <summary>Overlay look</summary>
+          <div class="look">
+            <div style="display:flex;flex-direction:column;gap:var(--s4)">
+              <div class="look-row">
+                <label for="fontSel">Font</label>
+                <select id="fontSel">
+                  <option>Share Tech Mono</option><option>Orbitron</option><option>Roboto Mono</option><option>Oswald</option>
+                  <option>Bebas Neue</option><option>Rajdhani</option><option>Teko</option><option>Anton</option>
+                  <option>Russo One</option><option>Barlow Condensed</option><option>Inter</option>
+                  <option value="__other">Other Google Font…</option>
+                </select>
+                <input type="text" id="fontOther" class="hidden" maxlength="40" placeholder="e.g. Exo 2" aria-label="Google Fonts name">
+              </div>
+              <div class="look-row">
+                <label for="sizeRange">Text size</label>
+                <input type="range" id="sizeRange" min="50" max="200" step="5">
+                <output id="sizeOut" for="sizeRange">100%</output>
+              </div>
+              <fieldset class="seg">
+                <legend>Position</legend>
+                <div class="seg-opts">
+                  <label><input type="radio" name="lookPos" value="bottom"><span>Bottom</span></label>
+                  <label><input type="radio" name="lookPos" value="top"><span>Top</span></label>
+                </div>
+              </fieldset>
+            <div class="look-foot">
+              <button class="btn-grey btn-small" id="lookReset">Reset to default</button>
+              <span class="state" id="lookState"></span>
+            </div>
+            </div>
+            <div>
+              <div class="muted">Order on the bar (left to right) and what shows</div>
+              <ol class="parts" id="partList"></ol>
+            </div>
+          </div>
+        </details>
+
+        <section id="divSection" aria-labelledby="divName">
+          <div class="div-head">
+            <div class="div-title">
+              <h2 id="divName"></h2>
+              <button class="btn-grey btn-small" id="renameDivBtn">Rename</button>
+              <button class="btn-grey btn-small" id="deleteDivBtn">Delete division</button>
+            </div>
+            <div class="div-tools">
+              <input type="text" id="filterInput" placeholder="Filter by name or track" aria-label="Filter the running order by name or track">
+            </div>
+          </div>
+
+          <div class="div-settings">
+            <fieldset class="seg">
+              <legend>Timer</legend>
+              <div class="seg-opts">
+                <label><input type="radio" name="dir" value="down"><span>Count down</span></label>
+                <label><input type="radio" name="dir" value="up"><span>Count up</span></label>
+              </div>
+            </fieldset>
+            <div class="limit">
+              <label for="limitInput">Time limit</label>
+              <input type="text" id="limitInput" inputmode="numeric" placeholder="none" aria-describedby="limitNote">
+              <span id="limitNote">None: the timer runs for the length of each track.</span>
+            </div>
+          </div>
+
+          <div class="steps">
+            <button id="addFilesBtn">Add music files</button>
+            <button class="btn-grey" id="editBtn">Edit music list</button>
+            <button class="btn-grey hidden" id="clearMusicBtn">Remove all music</button>
+          </div>
+          <ol class="run" id="runList"></ol>
+          <div class="empty hidden" id="runEmpty">Start by adding this division’s music files. Each file becomes a slot in the running order (in file-name order) and can be queued straight away. Then paste the competitor names to fill the slots in order.</div>
+
+          <div class="names">
+            <div class="panel">
+              <h3>Paste the running order</h3>
+              <label for="pasteBox">One name per line. Names fill the slots from the top, in order: the first name goes to the first slot without a name, and so on. Extra names are added at the end without music.</label>
+              <textarea id="pasteBox" placeholder="Kentaro Nakamura&#10;Sam Lee&#10;…"></textarea>
+              <label class="check"><input type="checkbox" id="replaceNames"> Replace names already in the list (start again from slot 1)</label>
+              <div class="row" style="margin-top: var(--s2)">
+                <button class="btn-grey" id="pasteBtn">Fill in names</button>
+              </div>
+            </div>
+            <div class="panel">
+              <h3>Add one name</h3>
+              <form class="row" id="addCompForm">
+                <input type="text" id="newCompName" maxlength="60" placeholder="Competitor name" aria-label="Competitor name">
+                <button type="submit" class="btn-grey">Add</button>
+              </form>
+              <p class="hint">Goes to the first slot without a name, or to the end of the list. Handy when competitors are added as they come up.</p>
+            </div>
+          </div>
+        </section>
+        <section class="panel" id="recSection" aria-labelledby="recTitle">
+          <div class="rec-head">
+            <h2 class="sec-title" id="recTitle">Recorded routines</h2>
+            <span class="pill" id="replayPill">Replay overlay: —</span>
+          </div>
+          <p class="hint">Each routine’s clicks are recorded while its track plays. To redo the overlay for an edited video, add the replay overlay link below as its own OBS source (or record it on its own), then press Play back on a routine. The live stream is never touched.</p>
+          <div class="replay-link"><code id="replayUrl"></code><button class="btn-grey btn-small" id="copyReplay">Copy link</button></div>
+          <ol class="recs" id="recList"></ol>
+          <div class="empty" id="recEmpty" style="margin-top:var(--s3)">No routines recorded yet. They appear here after each performance.</div>
+        </section>
+      </main>
+
+      <details class="panel drawer r-setup" id="setupBox">
+        <summary>Setup: cues and music import</summary>
+        <div class="setup-block">
+          <div class="cue-row">
+            <div class="muted">Start cue</div>
+            <div class="file" id="startCueName"></div>
+            <div class="cue-btns">
+              <button class="btn-grey btn-small" id="startCueBtn">Choose</button>
+              <button class="btn-grey btn-small" id="startCueRm">Remove</button>
+              <button class="btn-grey btn-small" id="startCueDef">Use default</button>
+            </div>
+          </div>
+          <div class="cue-row" style="margin-top:var(--s4)">
+            <div class="muted">End cue</div>
+            <div class="file" id="endCueName"></div>
+            <div class="cue-btns">
+              <button class="btn-grey btn-small" id="endCueBtn">Choose</button>
+              <button class="btn-grey btn-small" id="endCueRm">Remove</button>
+              <button class="btn-grey btn-small" id="endCueDef">Use default</button>
+            </div>
+          </div>
+          <p class="hint">Start plays the start cue, then the competitor’s track, then the end cue. Remove a cue to skip it. The timer runs during the track only.</p>
+        </div>
+        <div class="setup-block">
+          <button class="btn-grey" id="importBtn">Import a music folder</button>
+          <p class="hint">Pick a folder with one subfolder per division. Each subfolder becomes a division, and its music becomes the running order in file-name order.</p>
+        </div>
+        <div class="setup-block">
+          <div class="muted" id="storageLine">Music is saved in this browser only.</div>
+        </div>
+      </details>
+
+      <section class="r-device" aria-labelledby="deviceTitle">
+        <h2 id="deviceTitle" class="sec-title">This device</h2>
+        <div class="device-row" style="margin-top: var(--s3)">
+          <button class="btn-grey" id="disconnectBtn">Disconnect / change code</button>
+        </div>
+      </section>
+    </div>
+
+    <details id="logBox">
+      <summary>Activity log (useful if something goes wrong)</summary>
+      <pre id="log"></pre>
+    </details>
+  </div>
+</div>
+
+<div id="toast" class="gone" role="status" aria-live="polite"></div>
+<input type="file" id="filesInput" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.oga,.opus,.flac,.weba,.aif,.aiff" multiple class="hidden">
+<input type="file" id="cueInput" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.oga,.opus,.flac,.weba,.aif,.aiff" class="hidden">
+<input type="file" id="folderInput" webkitdirectory directory multiple class="hidden">
+<audio id="player" preload="auto"></audio>
+
+<script>
+(function () {
+  'use strict';
+
+  // ------------------------------------------------------------ helpers
+  function $(id) { return document.getElementById(id); }
+  function el(tag, props) {
+    var e = document.createElement(tag);
+    if (props) {
+      Object.keys(props).forEach(function (k) {
+        if (k === 'class') e.className = props[k];
+        else if (k === 'text') e.textContent = props[k];
+        else if (k.indexOf('on') === 0) e[k] = props[k];
+        else e.setAttribute(k, props[k]);
+      });
+    }
+    for (var i = 2; i < arguments.length; i++) {
+      var c = arguments[i];
+      if (c == null) continue;
+      e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    }
+    return e;
+  }
+  var ICONS = {
+    play: '<path class="f" d="M7 4.5v15l12-7.5z"/>',
+    pause: '<path class="f" d="M7 4h3.5v16H7zM13.5 4H17v16h-3.5z"/>',
+    stop: '<path class="f" d="M6 6h12v12H6z"/>',
+    up: '<path d="M6 15l6-6 6 6"/>',
+    down: '<path d="M6 9l6 6 6-6"/>',
+    x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  };
+  function icon(name) {
+    var fill = /class="f"/.test(ICONS[name]);
+    var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('viewBox', '0 0 24 24');
+    s.setAttribute('class', 'i' + (fill ? ' fill' : ''));
+    s.setAttribute('aria-hidden', 'true');
+    s.innerHTML = ICONS[name];
+    return s;
+  }
+  function setBtn(btn, iconName, text) {
+    btn.textContent = '';
+    if (iconName) btn.appendChild(icon(iconName));
+    if (text) btn.appendChild(document.createTextNode(text));
+  }
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } },
+    remove: function (k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
+  };
+  function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
+  var logEl = $('log');
+  function log(msg) {
+    var line = new Date().toLocaleTimeString() + '  ' + msg;
+    logEl.textContent = (logEl.textContent ? logEl.textContent + '\n' : '') + line;
+    var lines = logEl.textContent.split('\n');
+    if (lines.length > 150) logEl.textContent = lines.slice(-150).join('\n');
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function fmtTime(sec) {
+    if (!isFinite(sec) || sec < 0) sec = 0;
+    return Math.floor(sec / 60) + ':' + String(Math.floor(sec % 60)).padStart(2, '0');
+  }
+
+  // Two-step confirm, same pattern as the scoring page. Icon-only buttons say it in
+  // their tooltip and accessible name; text buttons swap their label.
+  var arm = { key: null, btn: null, nodes: null, title: null, label: null, timer: null };
+  function restoreAttr(btn, name, v) { if (v == null) btn.removeAttribute(name); else btn.setAttribute(name, v); }
+  function disarm() {
+    if (!arm.key) return;
+    clearTimeout(arm.timer);
+    arm.btn.classList.remove('armed');
+    if (arm.nodes) { arm.btn.textContent = ''; arm.nodes.forEach(function (n) { arm.btn.appendChild(n); }); }
+    restoreAttr(arm.btn, 'title', arm.title);
+    restoreAttr(arm.btn, 'aria-label', arm.label);
+    arm.key = null; arm.btn = null; arm.nodes = null;
+  }
+  function confirmClick(key, btn, armedText, fn) {
+    if (arm.key === key) { disarm(); fn(); return; }
+    disarm();
+    arm.key = key; arm.btn = btn; arm.nodes = null;
+    arm.title = btn.getAttribute('title'); arm.label = btn.getAttribute('aria-label');
+    btn.classList.add('armed');
+    if (btn.classList.contains('btn-icon')) { btn.title = armedText; btn.setAttribute('aria-label', armedText); }
+    else { arm.nodes = Array.from(btn.childNodes); btn.textContent = armedText; }
+    arm.timer = setTimeout(disarm, 3000);
+  }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') disarm(); });
+
+  // ------------------------------------------------------------ audio files (IndexedDB)
+  // Music stays on this laptop: files are copied into the browser's storage so a
+  // reload or restart brings them back without picking them again.
+  var AUDIO_EXT = ['mp3', 'wav', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'flac', 'weba', 'aif', 'aiff', 'wma'];
+  function ext(name) { var i = name.lastIndexOf('.'); return i < 0 ? '' : name.slice(i + 1).toLowerCase(); }
+  function baseName(name) { var i = name.lastIndexOf('.'); return i <= 0 ? name : name.slice(0, i); }
+  function isAudio(f) { return (f.type && f.type.indexOf('audio/') === 0) || AUDIO_EXT.indexOf(ext(f.name)) >= 0; }
+  function byFileName(a, b) { return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }); }
+  // "03 - Kentaro_Nakamura.mp3" -> "Kentaro Nakamura": what shows until a real name is pasted.
+  function nameFromFile(name) {
+    return baseName(name).replace(/^\s*\d+\s*[-_.)\]]*\s*/, '').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim() || baseName(name);
+  }
+
+  var dbp = null;
+  function db() {
+    if (dbp) return dbp;
+    dbp = new Promise(function (res, rej) {
+      var r = indexedDB.open('yoyo-music', 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore('tracks', { keyPath: 'id' }); };
+      r.onsuccess = function () { res(r.result); };
+      r.onerror = function () { rej(r.error); };
+    });
+    return dbp;
+  }
+  function idb(mode, fn) {
+    return db().then(function (d) {
+      return new Promise(function (res, rej) {
+        var tx = d.transaction('tracks', mode);
+        var out = fn(tx.objectStore('tracks'));
+        tx.oncomplete = function () { res(out && out.result); };
+        tx.onerror = function () { rej(tx.error); };
+        tx.onabort = function () { rej(tx.error); };
+      });
+    });
+  }
+  function putFile(id, file) { return idb('readwrite', function (s) { return s.put({ id: id, name: file.name, type: file.type, blob: file }); }); }
+  function getFile(id) { return idb('readonly', function (s) { return s.get(id); }); }
+  function delFile(id) { return idb('readwrite', function (s) { return s.delete(id); }); }
+  // Reads a file's length without playing it (for the timer).
+  function probeDuration(blob) {
+    return new Promise(function (resolve) {
+      var a = new Audio(), url = URL.createObjectURL(blob), done = false;
+      var finish = function (v) { if (done) return; done = true; URL.revokeObjectURL(url); a.removeAttribute('src'); resolve(v); };
+      a.preload = 'metadata';
+      a.onloadedmetadata = function () { finish(isFinite(a.duration) ? a.duration : 0); };
+      a.onerror = function () { finish(0); };
+      setTimeout(function () { finish(0); }, 8000);
+      a.src = url;
+    });
+  }
+
+  function storageNote(err) {
+    if (err && /quota/i.test(String(err.name || err.message))) {
+      notice('err', 'This browser is out of storage space, so some music was not saved. Remove unused tracks or divisions and try again.');
+    } else if (err) {
+      notice('err', 'Couldn’t save the music file: ' + (err.message || err));
+    }
+  }
+  function updateStorageLine() {
+    if (!navigator.storage || !navigator.storage.estimate) return;
+    navigator.storage.estimate().then(function (e) {
+      var mb = function (b) { return Math.round(b / 1048576); };
+      $('storageLine').textContent = 'Music is saved in this browser only: ' + mb(e.usage || 0) + ' MB used of about ' + mb(e.quota || 0) + ' MB available.';
+    }).catch(function () { /* optional */ });
+  }
+
+  // ------------------------------------------------------------ state
+  // divisions:[{ id, name, direction:'down'|'up', limit:seconds|0,
+  //   competitors:[{ id, name, trackId, done }],   <- the running order ("slots")
+  //   tracks:[{ id, name, dur }] }], cues:{start,end}, format, current, queued:{divId,compId}
+  var state;
+  function loadState() {
+    try { state = JSON.parse(store.get('yoyo.music.state') || 'null'); } catch (e) { state = null; }
+    if (!state || !Array.isArray(state.divisions)) state = {};
+    state.divisions = state.divisions || [];
+    state.cues = state.cues || { start: null, end: null };
+    state.format = state.format || 'both';
+    state.queued = state.queued || null;
+    // Every track is a slot in the running order (older saves kept files separately).
+    state.divisions.forEach(function (d) {
+      d.direction = d.direction === 'up' ? 'up' : 'down';
+      d.limit = d.limit > 0 ? d.limit : 0;
+      var used = {};
+      d.competitors.forEach(function (c) { c.name = c.name || ''; if (c.trackId) used[c.trackId] = true; });
+      d.tracks.forEach(function (t) { if (!used[t.id]) d.competitors.push({ id: uid(), name: '', trackId: t.id, done: false }); });
+    });
+  }
+  function saveState() { store.set('yoyo.music.state', JSON.stringify(state)); }
+  function findDiv(id) { return state.divisions.filter(function (d) { return d.id === id; })[0] || null; }
+  function curDiv() { return findDiv(state.current) || state.divisions[0] || null; }
+  function findComp(div, id) { return div ? (div.competitors.filter(function (c) { return c.id === id; })[0] || null) : null; }
+  function queuedPair() {
+    if (!state.queued) return null;
+    var d = findDiv(state.queued.divId), c = findComp(d, state.queued.compId);
+    return d && c ? { div: d, comp: c } : null;
+  }
+  function trackOf(div, comp) {
+    if (!comp || !comp.trackId) return null;
+    return div.tracks.filter(function (t) { return t.id === comp.trackId; })[0] || null;
+  }
+  // A slot shows its pasted name, or its file name until one is pasted.
+  function displayName(div, comp) {
+    if (comp.name) return comp.name;
+    var t = trackOf(div, comp);
+    return t ? nameFromFile(t.name) : 'Unnamed';
+  }
+  function norm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+
+  // ------------------------------------------------------------ overlay name
+  function computeLabel() {
+    var q = queuedPair();
+    if (!q || state.format === 'none') return '';
+    var n = displayName(q.div, q.comp);
+    if (state.format === 'name') return n;
+    if (state.format === 'division') return q.div.name;
+    return q.div.name + ': ' + n;
+  }
+  var serverState = null;      // the event's live state (scores, label, timer) from the server
+  var labelWanted = null;      // what this page last asked for; null = never asked
+  var clockOffset = 0;         // server time minus local time
+  function labelMessage() {
+    var q = queuedPair();
+    return { type: 'label', text: labelWanted || '', name: q ? displayName(q.div, q.comp) : '', division: q ? q.div.name : '' };
+  }
+  function labelPending() {
+    return labelWanted !== null && (!isHealthy() || !serverState || (serverState.label || '') !== labelWanted.slice(0, 40));
+  }
+  function pushLabel() {
+    labelWanted = computeLabel();
+    store.set('yoyo.music.label', JSON.stringify(labelWanted));
+    if (isHealthy()) ws.send(JSON.stringify(labelMessage()));
+    renderStream();
+  }
+
+  // ------------------------------------------------------------ performance timer
+  // This page drives the timer; the server stamps each reading with its own clock and
+  // the overlay, judges' preview and timer display all tick from it.
+  // base: { running, elapsedMs, durationMs, direction } outside the track (ready/stopped);
+  // during the track the reading comes from the player itself.
+  var timerBase = null;
+  var timerSentSig = '';
+  var inTrack = false;
+  function divTiming(div, track) {
+    var limitMs = div.limit > 0 ? div.limit * 1000 : 0;
+    var trackMs = track && track.dur ? Math.round(track.dur * 1000) : 0;
+    return { durationMs: limitMs || trackMs, direction: div.direction || 'down' };
+  }
+  function timerReading() {
+    if (inTrack && timerBase) {
+      return { running: !player.paused, elapsedMs: Math.round(player.currentTime * 1000), durationMs: timerBase.durationMs, direction: timerBase.direction };
+    }
+    return timerBase;
+  }
+  // currentPerf marks the routine being recorded while its track plays; finalPending
+  // closes it (sent as soon as the connection allows).
+  var currentPerf = null, finalPending = null;
+  function sendTimer(force) {
+    var t = timerReading();
+    var msg = { type: 'timer', timer: t };
+    if (inTrack && currentPerf) msg.perf = currentPerf;
+    else if (finalPending) msg.perf = finalPending;
+    var sig = JSON.stringify([t, msg.perf ? msg.perf.id + (msg.perf.final ? 'F' : '') : '']);
+    if (!force && sig === timerSentSig) return;
+    if (isHealthy()) {
+      ws.send(JSON.stringify(msg));
+      timerSentSig = sig;
+      if (msg.perf && msg.perf.final) finalPending = null;
+    }
+  }
+  function timerMs(t, now) {
+    var e = t.elapsedMs + (t.running ? Math.max(0, now - t.at) : 0);
+    if (t.durationMs) e = Math.min(e, t.durationMs);
+    return t.direction === 'up' ? e : Math.max(0, t.durationMs - e);
+  }
+  function timerText(t, now) {
+    var ms = timerMs(t, now);
+    var sec = t.direction === 'up' ? Math.floor(ms / 1000) : Math.ceil(ms / 1000);
+    return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+  }
+  function renderDeckTimer() {
+    var t = timerReading();
+    var box = $('deckTime');
+    if (!t) { box.textContent = '0:00'; box.className = 't idle'; $('deckTimeSub').textContent = 'Timer'; return; }
+    var local = Object.assign({}, t, { at: Date.now() });
+    box.textContent = timerText(local, Date.now());
+    var left = t.durationMs ? t.durationMs - Math.min(t.elapsedMs, t.durationMs) : Infinity;
+    box.className = 't' + (!t.running && !t.elapsedMs ? ' idle' : t.durationMs && left <= 0 ? ' out' : t.durationMs && left <= 10000 ? ' low' : '');
+    $('deckTimeSub').textContent = (t.direction === 'up' ? 'Counting up' : 'Counting down') + (t.durationMs ? ' · ' + fmtTime(t.durationMs / 1000) : '');
+  }
+  setInterval(function () {
+    renderDeckTimer();
+    if (pvTimerSpan) pvTimerSpan.textContent = timerText(pvTimer(), Date.now() + clockOffset);
+  }, 200);
+  // Correct drift every few seconds while the track runs.
+  setInterval(function () { if (inTrack) sendTimer(true); }, 5000);
+
+  // ------------------------------------------------------------ stream preview
+  // Same layout and number formatting as overlay.html (default options), from the
+  // server's state, with this page's own label/timer while they wait to be sent.
+  var pvTimerSpan = null;
+  function pvTimer() {
+    var t = timerReading();
+    if (t && (!isHealthy() || timerSentSig !== JSON.stringify(t))) return Object.assign({}, t, { at: Date.now() + clockOffset });
+    return serverState && serverState.timer ? serverState.timer : (t ? Object.assign({}, t, { at: Date.now() + clockOffset }) : null);
+  }
+  function pvPad3(n) { return String(Math.abs(Math.round(n))).padStart(3, '0'); }
+  function pvPad1(n) { return Math.abs(n).toFixed(1).padStart(5, '0'); }
+  function pvCell(name, parts) {
+    var d = el('div', { class: 'cell' });
+    if (name) d.appendChild(el('span', { class: 'name', text: name }));
+    parts.forEach(function (t, i) {
+      if (i) d.appendChild(document.createTextNode(' '));
+      d.appendChild(el('span', { text: t }));
+    });
+    return d;
+  }
+  function renderPreview() {
+    var stage = $('pvStage'), bar = $('pvBar'), grid = $('pvGrid');
+    var n = evt ? evt.judges : 0;
+    if (!serverState || !n || !stage.clientWidth) { bar.style.display = 'none'; $('pvBlank').classList.remove('hidden'); pvTimerSpan = null; return; }
+    $('pvBlank').classList.add('hidden');
+    var label = labelPending() ? labelWanted : (serverState.label || '');
+    var look = currentLook();
+    pvUseFont(look.font);
+    var aliases = serverState.aliases || [];
+    var cells = [], scoreCells = 0;
+    pvTimerSpan = null;
+    look.order.forEach(function (part) {
+      if (!look.show[part]) return;
+      if (part === 'label' && label) cells.push(pvCell(null, [label]));
+      if (part === 'timer') {
+        var t = pvTimer();
+        if (t) { var tc = pvCell('TIME:', [timerText(t, Date.now() + clockOffset)]); pvTimerSpan = tc.lastChild; cells.push(tc); }
+      }
+      if (part === 'judges') {
+        // Listed by the number spectators see (see Randomize on the judging page).
+        for (var p = 1; p <= n; p++) {
+          var slot = aliases.indexOf(p) >= 0 ? aliases.indexOf(p) + 1 : p;
+          var j = serverState.judges[slot] || { pos: 0, neg: 0 };
+          cells.push(pvCell('JDG' + p + ':', [(j.pos < 0 ? '-' : '+') + pvPad3(j.pos), (j.neg < 0 ? '+' : '-') + pvPad3(j.neg)]));
+          scoreCells++;
+        }
+      }
+      if (part === 'avg' && n > 1) {
+        var sumPos = 0, sumNeg = 0;
+        for (var i = 1; i <= n; i++) { var x = serverState.judges[i] || { pos: 0, neg: 0 }; sumPos += x.pos; sumNeg += x.neg; }
+        cells.push(pvCell('AVG:', [(sumPos < 0 ? '-' : '+') + pvPad1(sumPos / n), (sumNeg < 0 ? '+' : '-') + pvPad1(sumNeg / n)]));
+        scoreCells++;
+      }
+    });
+    if (!cells.length) { bar.style.display = 'none'; return; }
+    var rows = scoreCells <= 5 ? 1 : 2;
+    grid.style.gridTemplateColumns = 'repeat(' + Math.ceil(cells.length / rows) + ', max-content)';
+    grid.textContent = '';
+    cells.forEach(function (c) { grid.appendChild(c); });
+    bar.style.display = 'block';
+    var fs = stage.clientWidth * 0.0155 * (look.size / 100);
+    var minFs = stage.clientWidth < 600 ? 11 : 8;
+    bar.style.fontSize = Math.max(fs, minFs) + 'px';
+    for (var k = 0; k < 40 && grid.getBoundingClientRect().width > stage.clientWidth * 0.985 && fs > minFs; k++) {
+      fs *= 0.95;
+      bar.style.fontSize = fs + 'px';
+    }
+  }
+  window.addEventListener('resize', renderPreview);
+
+  // ------------------------------------------------------------ overlay look
+  // Set here, applied live to every overlay of the event (wins over the overlay link's options).
+  var PARTS = ['label', 'judges', 'avg', 'timer'];
+  var PART_LABELS = { label: 'Name / division', timer: 'Timer', judges: 'Judges', avg: 'Average' };
+  var DEFAULT_LOOK = { font: 'Share Tech Mono', size: 100, pos: 'bottom', order: PARTS.slice(), show: { label: true, timer: true, judges: true, avg: true } };
+  var lookWanted = null;  // a change not yet confirmed by the server
+  try { lookWanted = JSON.parse(store.get('yoyo.music.look') || 'null'); } catch (e) { lookWanted = null; }
+  function normLook(l) {
+    var show = {};
+    PARTS.forEach(function (k) { show[k] = !(l.show && l.show[k] === false); });
+    return { font: l.font, size: l.size, pos: l.pos, order: l.order.slice(), show: show };
+  }
+  function currentLook() { return lookWanted || (serverState && serverState.overlay) || DEFAULT_LOOK; }
+  function lookPending() { return !!lookWanted && (!isHealthy() || !serverState || JSON.stringify(serverState.overlay) !== JSON.stringify(lookWanted)); }
+  var lookTimer = null;
+  function setLook(next) {
+    lookWanted = normLook(next);
+    store.set('yoyo.music.look', JSON.stringify(lookWanted));
+    renderLook();
+    renderPreview();
+    clearTimeout(lookTimer);
+    lookTimer = setTimeout(sendLook, 120);
+  }
+  function sendLook() { if (lookWanted && isHealthy()) ws.send(JSON.stringify({ type: 'overlay', overlay: lookWanted })); }
+  function lookConfirmed() {
+    if (lookWanted && serverState && JSON.stringify(serverState.overlay) === JSON.stringify(lookWanted)) {
+      lookWanted = null;
+      store.remove('yoyo.music.look');
+    }
+  }
+  var pvFontLink = null, pvFont = '';
+  function pvUseFont(name) {
+    if (name === pvFont) return;
+    pvFont = name;
+    // Share Tech Mono is already loaded by this page; only fetch other fonts.
+    if (name !== 'Share Tech Mono') {
+      if (!pvFontLink) { pvFontLink = document.createElement('link'); pvFontLink.rel = 'stylesheet'; document.head.appendChild(pvFontLink); }
+      pvFontLink.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(name).replace(/%20/g, '+') + '&display=swap';
+    }
+    $('pvBar').style.fontFamily = "'" + name + "', Consolas, 'Courier New', monospace";
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(renderPreview);
+  }
+  function renderLook() {
+    var l = currentLook();
+    var sel = $('fontSel');
+    var known = [].some.call(sel.options, function (o) { return o.value === l.font; });
+    if (document.activeElement !== $('fontOther')) {
+      sel.value = known ? l.font : '__other';
+      $('fontOther').classList.toggle('hidden', known);
+      if (!known) $('fontOther').value = l.font;
+    }
+    if (document.activeElement !== $('sizeRange')) $('sizeRange').value = l.size;
+    $('sizeOut').textContent = l.size + '%';
+    document.querySelectorAll('input[name=lookPos]').forEach(function (r) { r.checked = r.value === l.pos; });
+    var list = $('partList');
+    list.textContent = '';
+    l.order.forEach(function (k, i) {
+      var cb = el('input', { type: 'checkbox', 'aria-label': 'Show ' + PART_LABELS[k] });
+      cb.checked = l.show[k];
+      cb.addEventListener('change', function () { var n = normLook(currentLook()); n.show[k] = this.checked; setLook(n); });
+      var up = el('button', { class: 'btn-icon', type: 'button', 'aria-label': 'Move ' + PART_LABELS[k] + ' left' }, icon('up'));
+      var dn = el('button', { class: 'btn-icon', type: 'button', 'aria-label': 'Move ' + PART_LABELS[k] + ' right' }, icon('down'));
+      up.disabled = i === 0; dn.disabled = i === l.order.length - 1;
+      var mv = function (d) { var n = normLook(currentLook()); var o = n.order; var t = o[i]; o[i] = o[i + d]; o[i + d] = t; setLook(n); };
+      up.onclick = function () { mv(-1); };
+      dn.onclick = function () { mv(1); };
+      list.appendChild(el('li', { class: l.show[k] ? '' : 'off' },
+        el('span', { class: 'pn', text: String(i + 1) }),
+        el('label', { class: 'pl' }, cb, PART_LABELS[k]),
+        up, dn));
+    });
+    var st = $('lookState');
+    var pending = lookPending();
+    st.className = 'state' + (pending ? ' pending' : '');
+    st.textContent = pending ? (isHealthy() ? 'Applying…' : 'Not applied yet: offline, it will be sent when the connection returns') : 'Applied to the overlay';
+  }
+  $('fontSel').addEventListener('change', function () {
+    if (this.value === '__other') { $('fontOther').classList.remove('hidden'); $('fontOther').focus(); return; }
+    $('fontOther').classList.add('hidden');
+    var n = normLook(currentLook()); n.font = this.value; setLook(n);
+  });
+  $('fontOther').addEventListener('change', function () {
+    var v = this.value.trim();
+    if (!/^[A-Za-z0-9 ]{1,40}$/.test(v)) { $('lookState').textContent = 'Use a Google Fonts name: letters, numbers and spaces.'; return; }
+    var n = normLook(currentLook()); n.font = v; setLook(n);
+  });
+  $('sizeRange').addEventListener('input', function () { var n = normLook(currentLook()); n.size = Number(this.value); setLook(n); });
+  document.querySelectorAll('input[name=lookPos]').forEach(function (r) {
+    r.addEventListener('change', function () { var n = normLook(currentLook()); n.pos = this.value; setLook(n); });
+  });
+  $('lookReset').onclick = function () { setLook(DEFAULT_LOOK); };
+
+  // ------------------------------------------------------------ recorded routines + replay
+  var recs = [];          // newest last; also kept in this browser
+  var replayNow = null;   // { rec, startAt } while the replay overlay plays one
+  var replays = 0;        // replay overlays connected
+  function recKey() { return evt ? 'yoyo.music.recs.' + evt.id : null; }
+  function loadRecs() { recs = []; var k = recKey(); if (!k) return; try { recs = JSON.parse(store.get(k) || '[]') || []; } catch (e) { recs = []; } }
+  function saveRecs() { var k = recKey(); if (!k) return; if (recs.length > 200) recs = recs.slice(-200); store.set(k, JSON.stringify(recs)); }
+  function mergeRec(r) {
+    if (!r || !r.id) return;
+    for (var i = 0; i < recs.length; i++) {
+      if (recs[i].id === r.id) {
+        if ((r.presses || []).length >= (recs[i].presses || []).length || (r.endAt && !recs[i].endAt)) recs[i] = r;
+        return;
+      }
+    }
+    recs.push(r);
+    recs.sort(function (a, b) { return a.startAt - b.startAt; });
+  }
+  function playReplay(r) {
+    if (!isHealthy()) { notice('warn', 'Not connected, so the replay can’t start right now.'); return; }
+    ws.send(JSON.stringify({ type: 'replay', action: 'play', rec: r }));
+    log('Playing back ' + r.name + ' on the replay overlay.');
+  }
+  function stopReplay() { if (isHealthy()) ws.send(JSON.stringify({ type: 'replay', action: 'stop' })); }
+  function renderRecs() {
+    if (evt && evt.viewKey) $('replayUrl').textContent = location.origin + '/overlay/' + evt.viewKey + '?replay=1';
+    var list = $('recList');
+    list.textContent = '';
+    $('recEmpty').classList.toggle('hidden', recs.length > 0);
+    recs.slice().reverse().forEach(function (r) {
+      var on = replayNow && replayNow.rec.id === r.id;
+      var len = r.endAt ? fmtTime((r.endAt - r.startAt) / 1000) : 'recording…';
+      var when = new Date(r.startAt - clockOffset).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      var btn = on
+        ? el('button', { class: 'btn-grey btn-small', type: 'button', text: 'Stop', onclick: stopReplay })
+        : el('button', { class: 'btn-small', type: 'button', text: 'Play back', 'aria-label': 'Play back ' + r.name + ' on the replay overlay', onclick: function () { playReplay(r); } });
+      if (!r.endAt) btn.disabled = true;
+      list.appendChild(el('li', { class: 'rec' + (on ? ' on' : '') },
+        el('div', null,
+          el('div', { class: 'rn', text: r.name || 'Unnamed' }),
+          el('div', { class: 'rm', text: [r.division, when, len, (r.presses || []).length + ' clicks'].filter(Boolean).join(' · ') })),
+        el('span', { class: 'rp', 'data-rec': r.id, text: '' }),
+        btn));
+    });
+    tickReplay();
+  }
+  function tickReplay() {
+    if (replayNow && Date.now() + clockOffset - replayNow.startAt > replayNow.rec.endAt - replayNow.rec.startAt + 1500) {
+      // Finished: the replay overlay holds the final scores; the row offers Play back again.
+      var doneId = replayNow.rec.id;
+      replayNow = null;
+      renderRecs();
+      var row = document.querySelector('.rp[data-rec="' + doneId + '"]');
+      if (row) row.textContent = 'played';
+      return;
+    }
+    var span = replayNow ? document.querySelector('.rp[data-rec="' + replayNow.rec.id + '"]') : null;
+    if (span) {
+      var r = Date.now() + clockOffset - replayNow.startAt;
+      var total = replayNow.rec.endAt - replayNow.rec.startAt;
+      span.textContent = r < 0 ? 'starting…' : 'playing ' + fmtTime(Math.min(r, total) / 1000);
+    }
+    if (!connected) setPill('replayPill', 'Replay overlay: —', '');
+    else setPill('replayPill', 'Replay overlay: ' + (replays ? 'connected' : 'not connected'), replays ? 'pill-ok' : '');
+  }
+  setInterval(tickReplay, 500);
+  $('copyReplay').onclick = function () {
+    var text = $('replayUrl').textContent, btn = this;
+    var done = function (msg) { btn.textContent = msg; setTimeout(function () { btn.textContent = 'Copy link'; }, 1500); };
+    var sel = function () { var rg = document.createRange(); rg.selectNodeContents($('replayUrl')); var w = window.getSelection(); w.removeAllRanges(); w.addRange(rg); done('Press Ctrl+C'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { done('Copied'); }, sel);
+    else sel();
+  };
+
+  function renderStream() {
+    var pending = labelPending();
+    var st = $('streamState');
+    st.className = 'state' + (pending ? ' pending' : '');
+    st.textContent = !connected && !wantConnected ? '' : pending ? (isHealthy() ? 'Sending…' : 'Name not sent yet: offline, it will be sent when the connection returns') : 'Live on the overlay';
+    var full = computeLabel();
+    $('lenWarn').textContent = full.length > 40 ? 'The overlay shows 40 characters, so the name is cut to “' + full.slice(0, 40) + '”.' : '';
+    renderPreview();
+  }
+
+  // ------------------------------------------------------------ connection
+  var WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  var BACKOFF = [500, 1000, 2000, 3000, 5000];
+  var ws = null, wantConnected = false, connected = false, backoffIdx = 0, reconnectTimer = null;
+  var lastMsgAt = 0, connectingSince = 0, currentCode = '', evt = null, viewers = 0, orphan = null;
+  function isHealthy() { return connected && ws && ws.readyState === 1 && Date.now() - lastMsgAt < 6000; }
+
+  function setPill(id, text, cls) { var p = $(id); p.textContent = text; p.className = 'pill' + (cls ? ' ' + cls : ''); }
+  function updatePills() {
+    if (!wantConnected && !connected) setPill('connPill', 'Not connected', '');
+    else if (isHealthy()) setPill('connPill', 'Connected', 'pill-ok');
+    else setPill('connPill', connected ? 'Connection unstable' : 'Connecting…', 'pill-warn');
+    if (!connected) setPill('overlayPill', 'Overlay: —', '');
+    else if (viewers > 0) setPill('overlayPill', 'Overlay: connected', 'pill-ok');
+    else setPill('overlayPill', 'Overlay: not connected', 'pill-warn');
+  }
+  function connect(code) {
+    currentCode = code; wantConnected = true; backoffIdx = 0;
+    $('connectMsg').textContent = '';
+    openSocket();
+  }
+  function openSocket() {
+    clearTimeout(reconnectTimer);
+    if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { /* ignore */ } }
+    connected = false;
+    var mine = new WebSocket(WS_URL);
+    ws = mine;
+    connectingSince = Date.now();
+    mine.onopen = function () {
+      lastMsgAt = Date.now();
+      mine.send(JSON.stringify({ type: 'hello', role: 'music', code: currentCode }));
+    };
+    mine.onmessage = function (e) {
+      if (mine !== ws) return;
+      lastMsgAt = Date.now();
+      var msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
+      if (typeof msg.now === 'number') clockOffset = msg.now - Date.now();
+      handleMessage(msg);
+    };
+    mine.onclose = function () {
+      if (mine !== ws) return;
+      ws = null;
+      if (connected) log('Connection lost.');
+      connected = false;
+      timerSentSig = '';
+      refreshStatus();
+      scheduleReconnect(mine._retryAfter);
+    };
+    mine.onerror = function () { /* onclose handles retry */ };
+  }
+  function scheduleReconnect(delay) {
+    if (!wantConnected) return;
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(openSocket, delay || BACKOFF[Math.min(backoffIdx++, BACKOFF.length - 1)]);
+  }
+  function handleMessage(msg) {
+    switch (msg.type) {
+      case 'ready': {
+        connected = true; backoffIdx = 0; connectingSince = 0; orphan = null;
+        evt = msg.event;
+        viewers = msg.status ? msg.status.viewers : 0;
+        serverState = msg.state || null;
+        store.set('yoyo.music.code', currentCode);
+        store.set('yoyo.music.event', JSON.stringify(evt));
+        showApp();
+        // This page owns the overlay name and the timer: re-send them if the server lost or changed them.
+        if (labelWanted !== null && (!serverState || (serverState.label || '') !== labelWanted.slice(0, 40))) {
+          ws.send(JSON.stringify(labelMessage()));
+          log('Sent the overlay name: "' + labelWanted + '".');
+        }
+        timerSentSig = '';
+        if (timerReading() || finalPending) sendTimer(true);
+        if (lookWanted) sendLook();
+        replays = msg.status && msg.status.replays || 0;
+        loadRecs();
+        (msg.recordings || []).forEach(mergeRec);
+        saveRecs();
+        renderRecs();
+        renderLook();
+        log('Connected to "' + evt.name + '".');
+        break;
+      }
+      case 'state':
+        serverState = msg.state || null;
+        lookConfirmed();
+        renderLook();
+        break;
+      case 'status':
+        viewers = msg.viewers || 0;
+        replays = msg.replays || 0;
+        break;
+      case 'recording':
+        mergeRec(msg.rec);
+        saveRecs();
+        renderRecs();
+        break;
+      case 'replay':
+        replayNow = msg.replay || null;
+        renderRecs();
+        break;
+      case 'error':
+        log('Server: ' + msg.message);
+        if (msg.fatal && evt) {
+          // Music keeps playing from this laptop; only the overlay name and timer wait.
+          orphan = msg.message;
+          connected = false;
+          if (ws) ws._retryAfter = 120000;
+        } else if (msg.fatal) {
+          wantConnected = false;
+          store.remove('yoyo.music.code');
+          disconnect(false);
+          $('connectMsg').textContent = msg.message;
+        } else if (ws) {
+          ws._retryAfter = 30000;
+          $('connectMsg').textContent = msg.message;
+        }
+        break;
+      default: break;
+    }
+    refreshStatus();
+  }
+  function disconnect(forget) {
+    wantConnected = false; connected = false; orphan = null;
+    clearTimeout(reconnectTimer);
+    if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { /* ignore */ } ws = null; }
+    if (forget) { store.remove('yoyo.music.code'); store.remove('yoyo.music.event'); }
+    $('app').classList.add('hidden');
+    $('eventHead').classList.add('hidden');
+    $('pageNav').classList.add('hidden');
+    $('connectPanel').classList.remove('hidden');
+    refreshStatus();
+  }
+  setInterval(function () {
+    if (!ws) return;
+    var now = Date.now();
+    if (ws.readyState === 1 && now - lastMsgAt > 8000) { log('No data from server for 8s, reconnecting.'); ws.close(); }
+    else if (ws.readyState === 0 && connectingSince && now - connectingSince > 10000) ws.close();
+  }, 2000);
+  window.addEventListener('online', function () { if (wantConnected && !connected) { backoffIdx = 0; openSocket(); } });
+  setInterval(refreshStatus, 1000);
+
+  function showApp() {
+    $('connectPanel').classList.add('hidden');
+    $('app').classList.remove('hidden');
+    if (evt) {
+      $('eventHead').classList.remove('hidden');
+      $('eventName').textContent = evt.name;
+      var c = encodeURIComponent(currentCode);
+      $('navHome').href = '/?code=' + c;
+      $('navScore').href = '/score?code=' + c;
+      $('navMusic').href = '/music?code=' + c;
+      $('navTimer').classList.toggle('hidden', !evt.viewKey);
+      if (evt.viewKey) $('navTimer').href = '/timer/' + encodeURIComponent(evt.viewKey);
+      $('pageNav').classList.remove('hidden');
+    }
+    renderAll();
+  }
+
+  // ------------------------------------------------------------ banners
+  var notices = [];
+  // Info goes to the toast (latest replaces the previous); problems stay as banners.
+  var toastTimer = null;
+  function notice(kind, text, sticky) {
+    if (kind === 'info') {
+      var t = $('toast');
+      t.textContent = text;
+      t.classList.remove('gone');
+      clearTimeout(toastTimer);
+      if (!sticky) toastTimer = setTimeout(function () { t.classList.add('gone'); }, 6000);
+      return;
+    }
+    notices.push({ kind: kind, text: text, until: Date.now() + 10000 });
+    refreshStatus();
+  }
+  var bannerSig = '';
+  function refreshStatus() {
+    updatePills();
+    renderStream();
+    if (timerReading() && isHealthy()) sendTimer(false);
+    var items = [];
+    if (orphan) {
+      items.push(['err', 'The server no longer accepts this event (' + orphan.replace(/\.$/, '') + '). Music still plays from this laptop, but the overlay name and timer can’t change. Ask the operator for a new code.']);
+    } else if (wantConnected && !isHealthy() && evt) {
+      items.push(['offline', 'Offline. Music still plays from this laptop; the overlay name and timer catch up when the connection returns.']);
+    }
+    notices = notices.filter(function (n) { return Date.now() < n.until; });
+    notices.forEach(function (n) { items.push([n.kind, n.text]); });
+    var sig = JSON.stringify(items);
+    if (sig === bannerSig) return;
+    bannerSig = sig;
+    $('bannersErr').textContent = '';
+    $('bannersInfo').textContent = '';
+    items.forEach(function (it) {
+      ($(it[0] === 'info' ? 'bannersInfo' : 'bannersErr')).appendChild(el('div', { class: 'banner ' + it[0], text: it[1] }));
+    });
+  }
+
+  // ------------------------------------------------------------ playback
+  // Start plays: start cue -> track -> end cue. A missing cue is skipped. The timer
+  // runs during the track; a division time limit cuts the track and plays the end cue.
+  var player = $('player');
+  var seq = 0;                 // bumps to cancel whatever is playing
+  var playing = null;          // { divId, compId } while a sequence runs
+  var isSeeking = false;
+  var objectUrl = null;
+  var limitWatch = null;
+
+  function setPlayStatus(text, cls) { var s = $('playStatus'); s.textContent = text; s.className = 'play-status ' + cls; }
+  function releaseUrl() { if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; } }
+
+  function playBlob(rec, isCurrent, onPlaying) {
+    return new Promise(function (resolve) {
+      if (!rec || !isCurrent()) { resolve('skip'); return; }
+      releaseUrl();
+      objectUrl = URL.createObjectURL(rec.blob);
+      var done = false;
+      var finish = function (r) { if (done) return; done = true; player.onended = null; player.onerror = null; player.onplaying = null; resolve(r); };
+      player.onended = function () { finish('ended'); };
+      player.onerror = function () { finish('error'); };
+      player.onplaying = function () { player.onplaying = null; if (onPlaying) onPlaying(finish); };
+      player.src = objectUrl;
+      player.play().catch(function (err) { if (err && err.name === 'AbortError') return; finish('error'); });
+    });
+  }
+  // Freeze the timer where the track stopped.
+  function endTrackTimer() {
+    clearInterval(limitWatch); limitWatch = null;
+    if (!inTrack) return;
+    var t = timerReading();
+    inTrack = false;
+    timerBase = { running: false, elapsedMs: t.elapsedMs, durationMs: t.durationMs, direction: t.direction };
+    if (currentPerf) { finalPending = Object.assign({}, currentPerf, { final: true, endAt: Date.now() + clockOffset }); currentPerf = null; }
+    sendTimer(true);
+  }
+
+  function start() {
+    var q = queuedPair();
+    if (!q || playing) return;
+    var mySeq = ++seq;
+    var isCurrent = function () { return mySeq === seq; };
+    playing = { divId: q.div.id, compId: q.comp.id };
+    var name = displayName(q.div, q.comp);
+    var t = trackOf(q.div, q.comp);
+    var limitMs = q.div.limit > 0 ? q.div.limit * 1000 : 0;
+    enableTransport(true);
+    renderAll();
+    Promise.all([
+      state.cues.start ? getFile(state.cues.start.id) : null,
+      t ? getFile(t.id) : null,
+    ]).then(function (recs) {
+      if (!isCurrent()) return null;
+      setPlayStatus('Playing start cue…', 'cue');
+      return playBlob(recs[0], isCurrent).then(function () {
+        if (!isCurrent()) return null;
+        if (!recs[1]) {
+          setPlayStatus(t ? 'Track file is missing from this browser; skipping to the end cue.' : 'No track for ' + name + '; playing the cues only.', 'cue');
+          return 'skip';
+        }
+        setPlayStatus('Track playing', 'track');
+        return playBlob(recs[1], isCurrent, function (finish) {
+          // The timer starts with the track itself.
+          if (!isCurrent()) return;
+          if (player.duration && isFinite(player.duration) && t && !t.dur) { t.dur = player.duration; saveState(); }
+          var timing = divTiming(q.div, t);
+          timerBase = { running: false, elapsedMs: 0, durationMs: timing.durationMs, direction: timing.direction };
+          currentPerf = { id: uid(), name: name, division: q.div.name, startAt: Date.now() + clockOffset };
+          inTrack = true;
+          sendTimer(true);
+          if (limitMs) {
+            limitWatch = setInterval(function () {
+              if (!isCurrent()) { clearInterval(limitWatch); return; }
+              if (player.currentTime * 1000 >= limitMs) {
+                player.pause();
+                log('Time limit reached for ' + name + '.');
+                finish('limit');
+              }
+            }, 50);
+          }
+        });
+      }).then(function (r) {
+        endTrackTimer();
+        if (!isCurrent()) return null;
+        if (r === 'error') {
+          stopAll();
+          setPlayStatus('Couldn’t play “' + (t ? t.name : '') + '”. This browser may not support that audio format.', 'error');
+          return null;
+        }
+        if (r === 'limit') setPlayStatus('Time limit reached. Playing end cue…', 'cue');
+        return playEnd(isCurrent);
+      });
+    }).catch(function (err) {
+      if (!isCurrent()) return;
+      stopAll();
+      setPlayStatus('Couldn’t load the music from this browser: ' + (err && err.message || err), 'error');
+    });
+  }
+  function playEnd(isCurrent) {
+    var endRec = state.cues.end ? getFile(state.cues.end.id) : Promise.resolve(null);
+    return endRec.then(function (rec) {
+      if (!isCurrent()) return;
+      if (rec && $('playStatus').textContent.indexOf('Time limit') !== 0) setPlayStatus('Playing end cue…', 'cue');
+      return playBlob(rec, isCurrent).then(function () { if (isCurrent()) finishPerformance(); });
+    });
+  }
+  function finishPerformance() {
+    var p = playing;
+    var d = p && findDiv(p.divId), c = findComp(d, p && p.compId);
+    if (c) { c.done = true; saveState(); log(displayName(d, c) + ' (' + d.name + ') done.'); }
+    playing = null;
+    releaseUrl();
+    enableTransport(false);
+    setPlayStatus(c ? displayName(d, c) + ' is done. Queue the next competitor.' : '', 'idle');
+    renderAll();
+  }
+  function skipToEnd() {
+    if (!playing) return;
+    var mySeq = ++seq;
+    player.pause();
+    endTrackTimer();
+    playEnd(function () { return mySeq === seq; });
+  }
+  function stopAll() {
+    seq++;
+    player.onended = null; player.onerror = null; player.onplaying = null;
+    player.pause();
+    endTrackTimer();
+    player.removeAttribute('src');
+    player.load();
+    releaseUrl();
+    playing = null;
+    enableTransport(false);
+    setPlayStatus('Stopped.', 'idle');
+    renderAll();
+  }
+  function enableTransport(on) {
+    ['playPauseBtn', 'backBtn', 'fwdBtn', 'seekBar'].forEach(function (id) { $(id).disabled = !on; });
+    if (!on) { $('seekBar').value = 0; $('curTime').textContent = '0:00'; $('durTime').textContent = '0:00'; setBtn($('playPauseBtn'), 'pause'); }
+  }
+  player.addEventListener('loadedmetadata', function () { $('seekBar').max = player.duration || 0; $('durTime').textContent = fmtTime(player.duration); });
+  player.addEventListener('timeupdate', function () {
+    if (isSeeking) return;
+    $('seekBar').value = player.currentTime;
+    $('curTime').textContent = fmtTime(player.currentTime);
+  });
+  // Pause, play and seeking move the timer with the track.
+  player.addEventListener('play', function () { setBtn($('playPauseBtn'), 'pause'); $('playPauseBtn').setAttribute('aria-label', 'Pause'); if (inTrack) sendTimer(true); });
+  player.addEventListener('pause', function () { setBtn($('playPauseBtn'), 'play'); $('playPauseBtn').setAttribute('aria-label', 'Play'); if (inTrack) sendTimer(true); });
+  player.addEventListener('seeked', function () { if (inTrack) sendTimer(true); });
+  player.addEventListener('playing', function () { if (inTrack) sendTimer(true); });
+  $('seekBar').addEventListener('pointerdown', function () { isSeeking = true; });
+  $('seekBar').addEventListener('input', function () { $('curTime').textContent = fmtTime(Number(this.value)); });
+  $('seekBar').addEventListener('change', function () { player.currentTime = Number(this.value); isSeeking = false; });
+  $('playPauseBtn').onclick = function () { if (player.paused) player.play().catch(function () {}); else player.pause(); };
+  $('backBtn').onclick = function () { player.currentTime = Math.max(0, player.currentTime - 10); };
+  $('fwdBtn').onclick = function () { player.currentTime = Math.min(player.duration || 0, player.currentTime + 10); };
+  $('startBtn').onclick = start;
+  $('skipBtn').onclick = skipToEnd;
+  $('stopBtn').onclick = function () { confirmClick('stop', this, 'Click again to stop', stopAll); };
+
+  // ------------------------------------------------------------ queueing
+  // Queueing puts the name on the overlay and sets the timer to this competitor's time.
+  function resetTimerFor(q) {
+    if (!q) { timerBase = null; sendTimer(true); return; }
+    var t = trackOf(q.div, q.comp);
+    var apply = function () {
+      var timing = divTiming(q.div, t);
+      timerBase = { running: false, elapsedMs: 0, durationMs: timing.durationMs, direction: timing.direction };
+      sendTimer(true);
+      renderDeckTimer();
+    };
+    apply();
+    if (t && !t.dur && !(q.div.limit > 0)) {
+      getFile(t.id).then(function (rec) { return rec ? probeDuration(rec.blob) : 0; }).then(function (dur) {
+        if (!dur) return;
+        t.dur = dur; saveState();
+        var still = queuedPair();
+        if (still && still.comp.id === q.comp.id && !playing) apply();
+      }).catch(function () {});
+    }
+  }
+  function queue(divId, compId) {
+    if (playing) return;
+    state.queued = { divId: divId, compId: compId };
+    saveState();
+    var q = queuedPair();
+    log('Queued ' + displayName(q.div, q.comp) + ' (' + q.div.name + ').');
+    setPlayStatus('', 'idle');
+    pushLabel();
+    resetTimerFor(q);
+    renderAll();
+  }
+  function nextAfterQueued() {
+    var q = queuedPair();
+    if (!q) return null;
+    var list = q.div.competitors, i = list.indexOf(q.comp);
+    for (var k = i + 1; k < list.length; k++) if (!list[k].done) return list[k];
+    return null;
+  }
+  $('queueNextBtn').onclick = function () {
+    var q = queuedPair(), n = nextAfterQueued();
+    if (!q || !n) return;
+    if (q.comp.done) { queue(q.div.id, n.id); return; }
+    // Skipping someone who hasn't performed yet asks twice.
+    confirmClick('qnext', this, 'Click again to skip ' + displayName(q.div, q.comp), function () { queue(q.div.id, n.id); });
+  };
+  document.querySelectorAll('input[name=fmt]').forEach(function (r) {
+    r.addEventListener('change', function () { state.format = this.value; saveState(); pushLabel(); });
+  });
+
+  // ------------------------------------------------------------ division timer settings
+  function parseLimit(v) {
+    v = String(v || '').trim();
+    if (!v) return 0;
+    var m = v.match(/^(\d{1,2}):([0-5]\d)$/) || v.match(/^(\d{1,3})()$/);
+    if (!m) return -1;
+    return m[2] === '' ? Number(m[1]) * 60 : Number(m[1]) * 60 + Number(m[2]);
+  }
+  function renderSettings(d) {
+    document.querySelectorAll('input[name=dir]').forEach(function (r) { r.checked = r.value === d.direction; });
+    if (document.activeElement !== $('limitInput')) $('limitInput').value = d.limit > 0 ? fmtTime(d.limit) : '';
+    $('limitNote').className = '';
+    $('limitNote').textContent = d.limit > 0
+      ? 'Music stops at ' + fmtTime(d.limit) + ' and the end cue plays. A shorter track ends on its own.'
+      : 'None: the timer runs for the length of each track.';
+  }
+  function settingsChanged(d) {
+    saveState();
+    var q = queuedPair();
+    if (q && q.div.id === d.id && !playing) resetTimerFor(q);
+  }
+  document.querySelectorAll('input[name=dir]').forEach(function (r) {
+    r.addEventListener('change', function () { var d = curDiv(); if (!d) return; d.direction = this.value; settingsChanged(d); renderSettings(d); });
+  });
+  $('limitInput').addEventListener('change', function () {
+    var d = curDiv();
+    if (!d) return;
+    var v = parseLimit(this.value);
+    if (v < 0) { $('limitNote').className = 'bad'; $('limitNote').textContent = 'Use minutes:seconds, e.g. 2:00 (or leave blank for no limit).'; return; }
+    d.limit = v;
+    settingsChanged(d);
+    renderSettings(d);
+  });
+
+  // ------------------------------------------------------------ rendering
+  var editing = false;
+  function renderAll() {
+    renderDivisions();
+    renderDeck();
+    renderDivision();
+    renderCues();
+    refreshStatus();
+  }
+
+  function renderDivisions() {
+    var list = $('divList');
+    list.textContent = '';
+    var cur = curDiv();
+    var q = queuedPair();
+    $('divEmpty').classList.toggle('hidden', state.divisions.length > 0);
+    state.divisions.forEach(function (d) {
+      var done = d.competitors.filter(function (c) { return c.done; }).length;
+      var btn = el('button', { class: 'div-btn' + (cur && cur.id === d.id ? ' current' : ''), type: 'button',
+        'aria-current': cur && cur.id === d.id ? 'true' : 'false',
+        onclick: function () { state.current = d.id; saveState(); editing = false; $('filterInput').value = ''; renderAll(); } },
+        el('span', { style: 'display:flex;align-items:center;min-width:0' },
+          q && q.div.id === d.id ? el('span', { class: 'live-dot', title: 'Queued competitor is in this division' }) : null,
+          el('span', { class: 'name', text: d.name })),
+        el('span', { class: 'count', text: d.competitors.length ? done + '/' + d.competitors.length + ' done' : 'empty' }));
+      list.appendChild(el('li', null, btn));
+    });
+  }
+
+  function renderDeck() {
+    var q = queuedPair();
+    var isPlaying = !!playing;
+    document.querySelectorAll('input[name=fmt]').forEach(function (r) { r.checked = r.value === state.format; });
+    var nt = $('nowTrack');
+    nt.textContent = '';
+    var nn = $('nowName');
+    nn.textContent = '';
+    if (!q) {
+      nn.textContent = 'Nothing queued';
+      nn.className = 'now-name none';
+      nt.textContent = 'Pick a division, then press Queue on a competitor.';
+    } else {
+      var i = q.div.competitors.indexOf(q.comp);
+      nn.className = 'now-name';
+      if (q.comp.name) nn.textContent = q.comp.name;
+      else nn.appendChild(el('span', { class: 'from-file', text: displayName(q.div, q.comp) }));
+      var t = trackOf(q.div, q.comp);
+      // State pill + division, position and track on one line under the name.
+      nt.append.apply(nt, [
+        el('span', { class: 'tag ' + (isPlaying ? 'playing' : 'queued'), text: isPlaying ? 'Performing' : 'Queued' }),
+        ' ' + q.div.name + ' · ' + (i + 1) + ' of ' + q.div.competitors.length + ' · ',
+        t ? el('span', { text: 'Track: ' + t.name }) : el('span', { class: 'missing', text: 'No track: Start plays only the cues.' }),
+        !q.comp.name && t ? el('span', { class: 'missing', text: ' · No name yet (showing the file name)' }) : null].filter(Boolean));
+    }
+    setBtn($('startBtn'), 'play', 'Start');
+    setBtn($('stopBtn'), 'stop', 'Stop');
+    $('startBtn').disabled = !q || isPlaying;
+    $('skipBtn').disabled = !isPlaying;
+    $('stopBtn').disabled = !isPlaying;
+    var n = nextAfterQueued();
+    $('queueNextBtn').disabled = !n || isPlaying;
+    $('queueNextBtn').className = q && !q.comp.done ? 'btn-grey' : '';
+    $('queueNextBtn').title = isPlaying ? 'Available when this performance ends' : '';
+    $('upNext').textContent = '';
+    if (n) $('upNext').append('Up next: ', el('strong', { text: displayName(q.div, n) }));
+    if (!$('playStatus').textContent && !isPlaying) setPlayStatus(q ? 'Ready. Press Start when the competitor is set.' : '', 'idle');
+    renderDeckTimer();
+  }
+
+  function renderDivision() {
+    var d = curDiv();
+    $('divSection').classList.toggle('hidden', !d);
+    if (!d) return;
+    state.current = d.id;
+    $('divName').textContent = d.name;
+    $('editBtn').textContent = editing ? 'Done editing' : 'Edit music list';
+    $('clearMusicBtn').classList.toggle('hidden', !editing || !d.tracks.length);
+    renderSettings(d);
+    var filter = norm($('filterInput').value);
+    var q = queuedPair();
+    var list = $('runList');
+    list.textContent = '';
+    $('runEmpty').classList.toggle('hidden', d.competitors.length > 0);
+    $('addFilesBtn').className = d.competitors.length ? 'btn-grey' : '';
+    d.competitors.forEach(function (c, i) {
+      var t = trackOf(d, c);
+      var shown = displayName(d, c);
+      if (filter && norm(shown).indexOf(filter) < 0 && !(t && norm(t.name).indexOf(filter) >= 0)) return;
+      var isQ = q && q.comp.id === c.id;
+      var isP = playing && playing.compId === c.id;
+      var li = el('li', { class: 'comp' + (c.done ? ' is-done' : '') + (isQ ? ' is-queued' : '') + (isP ? ' is-playing' : '') + (editing ? ' editing' : '') });
+      li.appendChild(el('span', { class: 'num', text: String(i + 1).padStart(2, '0') }));
+      if (!editing) {
+        li.appendChild(c.name
+          ? el('span', { class: 'cname', text: c.name })
+          : el('span', { class: 'cname from-file' }, shown, el('span', { class: 'src', text: 'from file name' })));
+        li.appendChild(el('span', { class: 'ctrack' + (t ? '' : ' missing'), text: t ? t.name : 'No track', title: t ? t.name : '' }));
+        var tag = isP ? el('span', { class: 'tag playing', text: 'Performing' })
+          : isQ ? el('span', { class: 'tag queued', text: 'Queued' })
+          : c.done ? el('span', { class: 'tag done', text: 'Done' }) : null;
+        li.appendChild(el('span', { class: 'state-cell' }, tag));
+        var qb = el('button', { class: 'btn-small qbtn' + (c.done ? ' btn-grey' : ''), type: 'button', text: c.done ? 'Queue again' : 'Queue',
+          'aria-label': (c.done ? 'Queue again: ' : 'Queue ') + shown, onclick: function () { queue(d.id, c.id); } });
+        qb.disabled = !!playing || isQ;
+        if (isQ) qb.style.visibility = 'hidden';
+        if (playing) qb.title = 'Available when this performance ends';
+        li.appendChild(qb);
+      } else {
+        var nameIn = el('input', { type: 'text', value: c.name, maxlength: '60', placeholder: t ? nameFromFile(t.name) : 'Name', 'aria-label': 'Name for slot ' + (i + 1) });
+        nameIn.addEventListener('change', function () {
+          c.name = this.value.trim();
+          saveState();
+          if (q && q.comp.id === c.id) pushLabel();
+        });
+        li.appendChild(nameIn);
+        var sel = el('select', { 'aria-label': 'Track for slot ' + (i + 1), class: 'tcell' });
+        sel.appendChild(el('option', { value: '', text: 'No track' }));
+        d.tracks.forEach(function (tr) {
+          var o = el('option', { value: tr.id, text: tr.name });
+          if (c.trackId === tr.id) o.selected = true;
+          sel.appendChild(o);
+        });
+        sel.addEventListener('change', function () { c.trackId = this.value || null; saveState(); });
+        li.appendChild(sel);
+        var dc = el('input', { type: 'checkbox' });
+        dc.checked = !!c.done;
+        dc.addEventListener('change', function () { c.done = this.checked; saveState(); renderDivisions(); renderDeck(); });
+        li.appendChild(el('label', { class: 'done-check' }, dc, 'Done'));
+        var upB = el('button', { class: 'btn-icon', type: 'button', 'aria-label': 'Move slot ' + (i + 1) + ' up', onclick: function () { move(d, i, -1); } }, icon('up'));
+        var dnB = el('button', { class: 'btn-icon', type: 'button', 'aria-label': 'Move slot ' + (i + 1) + ' down', onclick: function () { move(d, i, 1); } }, icon('down'));
+        upB.disabled = i === 0;
+        dnB.disabled = i === d.competitors.length - 1;
+        var rmB = el('button', { class: 'btn-icon', type: 'button', 'aria-label': 'Remove ' + shown });
+        rmB.appendChild(icon('x'));
+        rmB.onclick = function () { confirmClick('rm-' + c.id, rmB, 'Click again to remove ' + shown + (t ? ' and its music' : ''), function () { removeComp(d, c); }); };
+        if (isP) rmB.disabled = true;
+        li.appendChild(el('span', { class: 'edit-tools' }, upB, dnB, rmB));
+      }
+      list.appendChild(li);
+    });
+  }
+  function move(d, i, dir) {
+    var j = i + dir;
+    if (j < 0 || j >= d.competitors.length) return;
+    var tmp = d.competitors[i]; d.competitors[i] = d.competitors[j]; d.competitors[j] = tmp;
+    saveState(); renderDivision(); renderDeck();
+  }
+  // Removing a slot also removes its music unless another slot uses the same file.
+  function removeComp(d, c) {
+    d.competitors = d.competitors.filter(function (x) { return x !== c; });
+    if (c.trackId && !d.competitors.some(function (x) { return x.trackId === c.trackId; })) {
+      d.tracks = d.tracks.filter(function (t) { return t.id !== c.trackId; });
+      delFile(c.trackId).catch(function () {}).then(updateStorageLine);
+    }
+    if (state.queued && state.queued.compId === c.id) { state.queued = null; pushLabel(); resetTimerFor(null); }
+    saveState(); renderAll();
+  }
+
+  function renderCues() {
+    ['start', 'end'].forEach(function (w) {
+      var c = state.cues[w];
+      var name = $(w + 'CueName');
+      name.textContent = c ? (c.isDefault ? 'Default ' + w + ' cue' : c.name) : 'None: skipped';
+      name.title = c ? c.name : '';
+      name.className = 'file' + (c ? '' : ' missing');
+      $(w + 'CueRm').classList.toggle('hidden', !c);
+      $(w + 'CueDef').classList.toggle('hidden', !!(c && c.isDefault));
+    });
+  }
+  // The default cues ship with the server; a copy is kept in this browser like any other cue.
+  function useDefaultCue(which) {
+    var file = which === 'start' ? 'startnoise.mp3' : 'endnoise.mp3';
+    return fetch('/cues/' + file).then(function (r) {
+      if (!r.ok) throw new Error('The server has no default ' + which + ' cue.');
+      return r.blob();
+    }).then(function (b) {
+      return setCue(which, new File([b], file, { type: 'audio/mpeg' }), true);
+    });
+  }
+  function removeCue(which) {
+    var old = state.cues[which];
+    if (!old) return;
+    state.cues[which] = null;
+    saveState(); renderCues();
+    delFile(old.id).catch(function () {}).then(updateStorageLine);
+  }
+  ['start', 'end'].forEach(function (w) {
+    $(w + 'CueRm').onclick = function () { removeCue(w); };
+    $(w + 'CueDef').onclick = function () {
+      useDefaultCue(w).then(function () { saveState(); renderCues(); updateStorageLine(); })
+        .catch(function (err) { notice('err', 'Couldn’t load the default ' + w + ' cue. ' + (err instanceof TypeError ? 'Check the connection and try again.' : err.message)); });
+    };
+  });
+  // First time on this laptop: start with the default cues.
+  function initCues() {
+    if (state.cuesInit) return;
+    var jobs = ['start', 'end'].filter(function (w) { return !state.cues[w]; }).map(useDefaultCue);
+    Promise.all(jobs).then(function () { state.cuesInit = true; saveState(); renderCues(); updateStorageLine(); })
+      .catch(function () { /* offline: try again next time the page opens */ });
+  }
+
+  // ------------------------------------------------------------ editing actions
+  $('addDivForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = $('newDivName').value.trim();
+    if (!name) { $('newDivName').focus(); return; }
+    var d = { id: uid(), name: name, direction: 'down', limit: 0, competitors: [], tracks: [] };
+    state.divisions.push(d);
+    state.current = d.id;
+    $('newDivName').value = '';
+    editing = false;
+    saveState(); renderAll();
+  });
+  $('editBtn').onclick = function () { editing = !editing; renderDivision(); };
+  // Takes every track out of the division; slots with a pasted name stay (without music).
+  $('clearMusicBtn').onclick = function () {
+    var d = curDiv();
+    if (!d || !d.tracks.length) return;
+    if (playing && playing.divId === d.id) { notice('warn', 'Stop the current performance before removing this division’s music.'); return; }
+    confirmClick('clear-' + d.id, this, 'Click again to remove all ' + d.tracks.length + ' tracks', function () {
+      var gone = d.tracks.slice();
+      d.tracks = [];
+      d.competitors = d.competitors.filter(function (c) { return c.name; });
+      d.competitors.forEach(function (c) { c.trackId = null; });
+      var q = queuedPair();
+      if (state.queued && state.queued.divId === d.id && !q) { state.queued = null; pushLabel(); resetTimerFor(null); }
+      else if (q && q.div.id === d.id) { pushLabel(); resetTimerFor(q); }
+      saveState();
+      Promise.all(gone.map(function (t) { return delFile(t.id).catch(function () {}); })).then(updateStorageLine);
+      notice('info', 'Removed all music from ' + d.name + '.');
+      renderAll();
+    });
+  };
+  $('filterInput').addEventListener('input', renderDivision);
+
+  // Names fill slots in running order: the first name goes to the first slot without one.
+  function fillNames(names, replace) {
+    var d = curDiv();
+    if (!d) return { filled: 0, added: 0 };
+    names = names.map(function (n) { return n.replace(/^\s*\d+[.)]\s*/, '').trim().slice(0, 60); }).filter(Boolean);
+    var filled = 0, added = 0, k = 0;
+    if (replace) d.competitors.forEach(function (c) { c.name = ''; });
+    d.competitors.forEach(function (c) {
+      if (k < names.length && !c.name) { c.name = names[k++]; filled++; }
+    });
+    for (; k < names.length; k++) { d.competitors.push({ id: uid(), name: names[k], trackId: null, done: false }); added++; }
+    saveState();
+    var q = queuedPair();
+    if (q && q.div.id === d.id) pushLabel();
+    renderAll();
+    return { filled: filled, added: added };
+  }
+  $('addCompForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var r = fillNames([$('newCompName').value], false);
+    if (r.filled || r.added) $('newCompName').value = '';
+    $('newCompName').focus();
+  });
+  $('pasteBtn').onclick = function () {
+    var r = fillNames($('pasteBox').value.split(/\r?\n/), $('replaceNames').checked);
+    if (!r.filled && !r.added) return;
+    $('pasteBox').value = '';
+    $('replaceNames').checked = false;
+    notice('info', 'Filled ' + r.filled + (r.filled === 1 ? ' slot' : ' slots') + ' with names'
+      + (r.added ? ' and added ' + r.added + ' more without music' : '') + ' in ' + curDiv().name + '.');
+  };
+  $('renameDivBtn').onclick = function () {
+    var d = curDiv();
+    if (!d) return;
+    var h = $('divName');
+    var input = el('input', { type: 'text', value: d.name, maxlength: '40', 'aria-label': 'Division name' });
+    var finish = function (save) {
+      var v = input.value.trim();
+      if (save && v) { d.name = v; saveState(); if (queuedPair() && queuedPair().div.id === d.id) pushLabel(); }
+      renderAll();
+    };
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); });
+    input.addEventListener('blur', function () { finish(true); });
+    h.textContent = '';
+    h.appendChild(input);
+    input.focus(); input.select();
+  };
+  $('deleteDivBtn').onclick = function () {
+    var d = curDiv();
+    if (!d) return;
+    if (playing && playing.divId === d.id) { notice('warn', 'Stop the current performance before deleting its division.'); return; }
+    confirmClick('deldiv-' + d.id, this, 'Click again to delete ' + d.name, function () {
+      state.divisions = state.divisions.filter(function (x) { return x !== d; });
+      if (state.queued && state.queued.divId === d.id) { state.queued = null; pushLabel(); resetTimerFor(null); }
+      state.current = state.divisions[0] ? state.divisions[0].id : null;
+      editing = false;
+      saveState();
+      Promise.all(d.tracks.map(function (t) { return delFile(t.id).catch(function () {}); })).then(updateStorageLine);
+      renderAll();
+    });
+  };
+
+  // New files become slots at the end of the running order, in file-name order.
+  function saveFiles(d, files) {
+    var known = {};
+    d.tracks.forEach(function (t) { known[t.name.toLowerCase()] = true; });
+    var fresh = files.filter(function (f) {
+      if (!isAudio(f) || known[f.name.toLowerCase()]) return false;
+      known[f.name.toLowerCase()] = true;
+      return true;
+    }).sort(byFileName);
+    var jobs = fresh.map(function (f) {
+      var id = uid();
+      return putFile(id, f).then(function () {
+        return probeDuration(f).then(function (dur) { return { id: id, name: f.name, dur: dur || 0 }; });
+      }, function (err) { storageNote(err); return null; });
+    });
+    return Promise.all(jobs).then(function (tracks) {
+      var added = 0;
+      tracks.forEach(function (t) {
+        if (!t) return;
+        d.tracks.push(t);
+        d.competitors.push({ id: uid(), name: '', trackId: t.id, done: false });
+        added++;
+      });
+      return added;
+    });
+  }
+  $('addFilesBtn').onclick = function () { $('filesInput').click(); };
+  $('filesInput').addEventListener('change', function () {
+    var d = curDiv(), files = Array.from(this.files);
+    this.value = '';
+    if (!d || !files.length) return;
+    notice('info', 'Adding ' + files.length + (files.length === 1 ? ' file…' : ' files…'), true);
+    saveFiles(d, files).then(function (n) {
+      saveState(); renderAll(); updateStorageLine();
+      notice('info', 'Added ' + n + (n === 1 ? ' track' : ' tracks') + ' to ' + d.name + '. They can be queued now; paste the running order to put names on them.');
+    });
+  });
+
+  var cueTarget = null;
+  $('startCueBtn').onclick = function () { cueTarget = 'start'; $('cueInput').click(); };
+  $('endCueBtn').onclick = function () { cueTarget = 'end'; $('cueInput').click(); };
+  $('cueInput').addEventListener('change', function () {
+    var f = this.files[0];
+    this.value = '';
+    if (!f || !cueTarget) return;
+    setCue(cueTarget, f).then(function () { saveState(); renderCues(); updateStorageLine(); });
+  });
+  function setCue(which, f, isDefault) {
+    var id = uid();
+    var old = state.cues[which];
+    return putFile(id, f).then(function () {
+      state.cues[which] = { id: id, name: f.name, isDefault: !!isDefault };
+      if (old) delFile(old.id).catch(function () {});
+    }, storageNote);
+  }
+
+  // Folder layout: Root/<Division>/<tracks>. Files directly in the root are ignored.
+  $('importBtn').onclick = function () { $('folderInput').click(); };
+  $('folderInput').addEventListener('change', function () {
+    var files = Array.from(this.files).filter(isAudio);
+    this.value = '';
+    if (!files.length) { notice('warn', 'No audio files were found in that folder.'); return; }
+    var byDiv = {}, jobs = [];
+    files.forEach(function (f) {
+      var parts = (f.webkitRelativePath || f.name).split('/');
+      if (parts.length >= 3) (byDiv[parts[1]] = byDiv[parts[1]] || []).push(f);
+    });
+    var names = Object.keys(byDiv).sort(function (a, b) { return a.localeCompare(b, undefined, { numeric: true }); });
+    if (!names.length) { notice('warn', 'That folder has no subfolders with music. Put each division’s music in its own subfolder.'); return; }
+    names.forEach(function (name) {
+      var d = state.divisions.filter(function (x) { return x.name.toLowerCase() === name.toLowerCase(); })[0];
+      if (!d) { d = { id: uid(), name: name, direction: 'down', limit: 0, competitors: [], tracks: [] }; state.divisions.push(d); }
+      jobs.push(saveFiles(d, byDiv[name]));
+    });
+    notice('info', 'Importing ' + files.length + ' files…', true);
+    Promise.all(jobs).then(function () {
+      if (!findDiv(state.current) && state.divisions[0]) state.current = state.divisions[0].id;
+      saveState(); renderAll(); updateStorageLine();
+      notice('info', 'Imported ' + names.length + (names.length === 1 ? ' division' : ' divisions') + '. Tracks can be queued now; paste each running order to put names on them.');
+      log('Imported folder: ' + names.join(', ') + '.');
+    });
+  });
+
+  // ------------------------------------------------------------ start
+  $('connectBtn').onclick = function () {
+    var code = $('codeInput').value.trim();
+    if (!code) { $('connectMsg').textContent = 'Enter the event code.'; return; }
+    connect(code);
+  };
+  $('codeInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('connectBtn').click(); });
+  $('disconnectBtn').onclick = function () {
+    confirmClick('disconnect', this, 'Click again to disconnect', function () { stopAll(); disconnect(true); });
+  };
+
+  loadState();
+  saveState();
+  try { labelWanted = JSON.parse(store.get('yoyo.music.label') || 'null'); } catch (e) { labelWanted = null; }
+  setBtn($('playPauseBtn'), 'pause');
+  enableTransport(false);
+  if (queuedPair()) resetTimerFor(queuedPair());
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
+  updateStorageLine();
+  renderCues();
+  initCues();
+  try {
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/score-sw.js', { scope: '/music' }).catch(function () { /* optional */ });
+  } catch (e) { /* optional */ }
+
+  var startCode = new URLSearchParams(location.search).get('code') || store.get('yoyo.music.code') || '';
+  if (startCode) {
+    $('codeInput').value = startCode;
+    // Works without the server: the music and lists are all on this laptop.
+    try { evt = JSON.parse(store.get('yoyo.music.event') || 'null'); } catch (e) { evt = null; }
+    if (evt) { showApp(); loadRecs(); renderRecs(); renderLook(); }
+    connect(startCode);
+  }
+  refreshStatus();
+})();
+</script>
+</body>
+</html>

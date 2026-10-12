@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Yo-Yo Event Management</title>
+<style>
+  :root { --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #1a1a1a; color: #eee; margin: 0; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: var(--s7) var(--s4); }
+  .hidden { display: none !important; }
+  h1 { font-size: 15px; font-weight: 600; color: #aaa; margin: 0 0 var(--s6); }
+  h2 { margin: 0; }
+  ::placeholder { color: #8f8f8f; opacity: 1; }
+  .panel { background: #242424; border-radius: 10px; padding: var(--s5); }
+  label { display: block; font-size: 12px; color: #aaa; margin-bottom: var(--s1); }
+  input[type=text] { padding: 10px 12px; border-radius: 6px; border: 1px solid #3a3a3a; background: #1a1a1a; color: #eee; font: inherit; font-size: 16px; width: 100%; }
+  button {
+    padding: 10px 18px; border: none; border-radius: 6px; font: inherit; font-size: 15px; font-weight: 600;
+    cursor: pointer; background: #1565c0; color: #fff; white-space: nowrap;
+  }
+  button:disabled { background: #444; color: #888; cursor: progress; }
+  button:not(:disabled):hover { filter: brightness(1.15); }
+  button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid #64b5f6; outline-offset: 2px; }
+  .code-row { display: flex; gap: var(--s3); align-items: flex-end; }
+  .code-row > div { flex: 1; min-width: 0; }
+  #msg { margin-top: var(--s3); font-size: 14px; color: #ef9a9a; }
+  #msg:empty { display: none; }
+  .lead { font-size: 22px; font-weight: 800; margin-bottom: var(--s2); }
+  .sub { color: #999; font-size: 14px; line-height: 1.5; margin: 0 0 var(--s5); }
+
+  #eventTitle { font-size: 26px; font-weight: 800; overflow-wrap: anywhere; }
+  .event-meta { color: #999; font-size: 14px; margin: var(--s1) 0 var(--s5); }
+  .choices { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); }
+  .choice {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s1) var(--s4); align-items: center;
+    padding: var(--s4) var(--s5); background: #242424; border: 1px solid #333; border-radius: 10px;
+    color: #eee; text-decoration: none;
+  }
+  .choice:hover { border-color: #1565c0; background: #12304d; }
+  .choice .t { font-size: 18px; font-weight: 700; }
+  .choice .d { grid-column: 1; font-size: 14px; color: #aaa; line-height: 1.4; }
+  .choice .go { grid-column: 2; grid-row: 1 / span 2; font-size: 14px; font-weight: 600; color: #64b5f6; white-space: nowrap; }
+  .choice:hover .d { color: #cfe3ff; }
+  .switch { margin-top: var(--s5); font-size: 14px; color: #999; }
+  .switch button { background: none; color: #64b5f6; padding: 0; font-size: 14px; font-weight: 600; }
+  @media (max-width: 520px) {
+    .code-row { flex-direction: column; align-items: stretch; }
+    .choice { padding: var(--s4); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Yo-Yo Event Management</h1>
+
+  <section class="panel" id="codePanel">
+    <h2 class="lead">Enter your event code</h2>
+    <p class="sub">The organizer sent you a code like WORD-WORD-WORD-00. It opens the judging, music and timer pages for your event.</p>
+    <form class="code-row" id="codeForm">
+      <div>
+        <label for="codeInput">Event code</label>
+        <input type="text" id="codeInput" autocomplete="off" spellcheck="false" placeholder="WORD-WORD-WORD-00">
+      </div>
+      <button type="submit" id="goBtn">Continue</button>
+    </form>
+    <div id="msg" role="alert"></div>
+  </section>
+
+  <section class="hidden" id="pickPanel" aria-labelledby="eventTitle">
+    <h2 id="eventTitle"></h2>
+    <p class="event-meta" id="eventMeta"></p>
+    <ul class="choices">
+      <li><a class="choice" id="toScore" href="/score">
+        <span class="t">Judging</span>
+        <span class="d">Score with controllers or on-screen buttons. One laptop can hold several judges.</span>
+        <span class="go">Open →</span></a></li>
+      <li><a class="choice" id="toMusic" href="/music">
+        <span class="t">Music</span>
+        <span class="d">Queue competitors, play their music with start and end cues, and set the name and timer on the stream.</span>
+        <span class="go">Open →</span></a></li>
+      <li><a class="choice" id="toTimer" href="/timer" target="_blank" rel="noopener">
+        <span class="t">Timer display</span>
+        <span class="d">A big performance timer for a screen the judges, the competitor or the audience can see. Opens in a new tab.</span>
+        <span class="go">Open →</span></a></li>
+    </ul>
+    <p class="switch">Not your event? <button type="button" id="switchBtn">Use a different code</button></p>
+  </section>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } },
+    remove: function (k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
+  };
+
+  function showPick(code, ev) {
+    var c = encodeURIComponent(code);
+    $('eventTitle').textContent = ev.name;
+    $('eventMeta').textContent = ev.judges + (ev.judges === 1 ? ' judge' : ' judges') + ' · code ' + code.toUpperCase();
+    $('toScore').href = '/score?code=' + c;
+    $('toMusic').href = '/music?code=' + c;
+    $('toTimer').href = '/timer/' + encodeURIComponent(ev.viewKey);
+    $('codePanel').classList.add('hidden');
+    $('pickPanel').classList.remove('hidden');
+    document.title = ev.name + ' · Yo-Yo Event Management';
+    if (history.replaceState) history.replaceState(null, '', '/?code=' + c);
+    $('toScore').focus();
+  }
+
+  function check(code) {
+    $('msg').textContent = '';
+    $('goBtn').disabled = true;
+    fetch('/api/event?code=' + encodeURIComponent(code)).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (!r.ok) throw new Error(data.error || 'That code was not recognized.');
+        return data.event;
+      });
+    }, function () {
+      throw new Error('Couldn’t reach the server. Check your connection and try again.');
+    }).then(function (ev) {
+      store.set('yoyo.hub.code', code);
+      showPick(code, ev);
+    }).catch(function (err) {
+      $('msg').textContent = err.message;
+      $('codeInput').focus();
+    }).then(function () { $('goBtn').disabled = false; });
+  }
+
+  $('codeForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var code = $('codeInput').value.trim();
+    if (!code) { $('msg').textContent = 'Enter your event code.'; $('codeInput').focus(); return; }
+    check(code);
+  });
+  $('switchBtn').onclick = function () {
+    store.remove('yoyo.hub.code');
+    $('pickPanel').classList.add('hidden');
+    $('codePanel').classList.remove('hidden');
+    $('codeInput').value = '';
+    if (history.replaceState) history.replaceState(null, '', '/');
+    $('codeInput').focus();
+  };
+
+  var start = new URLSearchParams(location.search).get('code') || store.get('yoyo.hub.code') || '';
+  if (start) { $('codeInput').value = start; check(start); }
+  else $('codeInput').focus();
+})();
+</script>
+</body>
+</html>

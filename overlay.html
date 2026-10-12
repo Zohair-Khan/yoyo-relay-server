@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Yoyo Scoring Overlay</title>
+<title>Overlay · Yo-Yo Event Management</title>
 <style>
   html, body {
     margin: 0;
@@ -59,21 +59,27 @@
 /*
  * Overlay for OBS Browser Source.
  *   URL:  /overlay/<view key>
- * Optional URL options (add after ?, join with &):
+ * The music page can change the look live (font, size, position, order, what shows);
+ * when it has, that wins over these link options:
  *   size=100        text size, percent (default 100)
  *   pos=bottom      bottom (default) or top
  *   font=Orbitron   any Google Font name (default Share Tech Mono)
- *   bg=000000b8     background colour as hex (RRGGBB or RRGGBBAA), or "transparent"
- *   color=ffffff    text colour as hex
  *   avg=0           hide the AVG cell
  *   label=0         hide the competitor label
+ *   timer=0         hide the performance timer
+ * Always from the link:
+ *   bg=000000b8     background colour as hex (RRGGBB or RRGGBBAA), or "transparent"
+ *   color=ffffff    text colour as hex
  *   debug=1         show connection status + grey background (for testing in a browser)
+ *   replay=1        replay overlay: plays back a recorded routine started from the music page
+ *                   (add it as its own OBS source or record it alone; it never shows live scores)
  */
 (function () {
   'use strict';
 
   var q = new URLSearchParams(location.search);
   var key = decodeURIComponent(location.pathname.replace(/^\/overlay\/?/, '')) || q.get('key') || '';
+  var replayMode = q.get('replay') === '1';
 
   function cssColor(v, fallback) {
     if (!v) return fallback;
@@ -82,13 +88,16 @@
     return fallback;
   }
 
-  var size = Math.min(300, Math.max(30, parseFloat(q.get('size')) || 100));
-  var atTop = q.get('pos') === 'top';
-  var showAvg = q.get('avg') !== '0';
-  var showLabel = q.get('label') !== '0';
-  var debug = q.get('debug') === '1';
+  // Look from the link (used until the music page sets one).
   var fontParam = q.get('font');
-  var fontName = fontParam && /^[A-Za-z0-9 ]{1,40}$/.test(fontParam) ? fontParam : 'Share Tech Mono';
+  var linkCfg = {
+    font: fontParam && /^[A-Za-z0-9 ]{1,40}$/.test(fontParam) ? fontParam : 'Share Tech Mono',
+    size: Math.min(250, Math.max(50, parseFloat(q.get('size')) || 100)),
+    pos: q.get('pos') === 'top' ? 'top' : 'bottom',
+    order: ['label', 'judges', 'avg', 'timer'],
+    show: { label: q.get('label') !== '0', timer: q.get('timer') !== '0', judges: true, avg: q.get('avg') !== '0' },
+  };
+  var debug = q.get('debug') === '1';
 
   var bar = document.getElementById('bar');
   var grid = document.getElementById('grid');
@@ -96,13 +105,18 @@
 
   bar.style.background = cssColor(q.get('bg'), 'rgba(0,0,0,0.72)');
   bar.style.color = cssColor(q.get('color'), '#ffffff');
-  bar.style[atTop ? 'top' : 'bottom'] = '0';
-  bar.style.fontFamily = "'" + fontName + "', Consolas, 'Courier New', monospace";
 
-  var link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(fontName).replace(/%20/g, '+') + '&display=swap';
-  document.head.appendChild(link);
+  var fontLink = document.createElement('link');
+  fontLink.rel = 'stylesheet';
+  document.head.appendChild(fontLink);
+  var fontNow = '';
+  function useFont(name) {
+    if (name === fontNow) return;
+    fontNow = name;
+    fontLink.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(name).replace(/%20/g, '+') + '&display=swap';
+    bar.style.fontFamily = "'" + name + "', Consolas, 'Courier New', monospace";
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { lastSig = ''; });
+  }
 
   if (debug) {
     document.body.style.background = '#2a2a2a';
@@ -136,40 +150,69 @@
     return d;
   }
 
-  var state = null;
+  // ---- performance timer (times are server time)
+  var clockOffset = 0;
+  function serverNow() { return Date.now() + clockOffset; }
+  function syncClock(now) { if (typeof now === 'number') clockOffset = now - Date.now(); }
+  function fmtTimer(direction, durationMs, elapsed) {
+    if (durationMs) elapsed = Math.min(elapsed, durationMs);
+    var ms = direction === 'up' ? elapsed : Math.max(0, durationMs - elapsed);
+    var sec = direction === 'up' ? Math.floor(ms / 1000) : Math.ceil(ms / 1000);
+    return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+  }
+  function liveTimerText(t) {
+    return fmtTimer(t.direction, t.durationMs, t.elapsedMs + (t.running ? Math.max(0, serverNow() - t.at) : 0));
+  }
 
-  function render() {
-    if (!state) return;
-    var n = Object.keys(state.judges).length;
+  // ---- the bar: one model, drawn in the configured order with public judge numbers
+  // model: { label, timerText|null, judges:{slot:{pos,neg}}, n, aliases }
+  var lastSig = '';
+  var timerSpan = null;
+  function draw(model, cfg) {
+    useFont(cfg.font);
+    bar.style.top = cfg.pos === 'top' ? '0' : '';
+    bar.style.bottom = cfg.pos === 'top' ? '' : '0';
+    var n = model.n;
     var cells = [];
-    var hasLabel = showLabel && !!state.label;
-    if (hasLabel) cells.push(makeCell(null, [state.label]));
-
-    var sumPos = 0;
-    var sumNeg = 0;
-    for (var i = 1; i <= n; i++) {
-      var j = state.judges[i] || { pos: 0, neg: 0 };
-      sumPos += j.pos;
-      sumNeg += j.neg;
-      cells.push(makeCell('JDG' + i + ':', [fmtPos(j.pos), fmtNeg(j.neg)]));
-    }
-    var scoreCells = n;
-    if (showAvg && n > 1) {
-      cells.push(makeCell('AVG:', [fmtAvgPos(sumPos / n), fmtAvgNeg(sumNeg / n)]));
-      scoreCells++;
-    }
-
+    var scoreCells = 0;
+    timerSpan = null;
+    var bySlot = function (p) { var i = model.aliases ? model.aliases.indexOf(p) : -1; return i >= 0 ? i + 1 : p; };
+    cfg.order.forEach(function (part) {
+      if (!cfg.show[part]) return;
+      if (part === 'label' && model.label) cells.push(makeCell(null, [model.label]));
+      if (part === 'timer' && model.timerText) {
+        var tc = makeCell('TIME:', [model.timerText]);
+        timerSpan = tc.lastChild;
+        cells.push(tc);
+      }
+      if (part === 'judges') {
+        // Judges are listed by the number spectators see, not their real slot.
+        for (var p = 1; p <= n; p++) {
+          var j = model.judges[bySlot(p)] || { pos: 0, neg: 0 };
+          cells.push(makeCell('JDG' + p + ':', [fmtPos(j.pos), fmtNeg(j.neg)]));
+          scoreCells++;
+        }
+      }
+      if (part === 'avg' && n > 1) {
+        var sp = 0, sn = 0;
+        for (var i = 1; i <= n; i++) { var x = model.judges[i] || { pos: 0, neg: 0 }; sp += x.pos; sn += x.neg; }
+        cells.push(makeCell('AVG:', [fmtAvgPos(sp / n), fmtAvgNeg(sn / n)]));
+        scoreCells++;
+      }
+    });
+    if (!cells.length) { bar.style.display = 'none'; return; }
     var rows = scoreCells <= 5 ? 1 : 2;
-    var cols = Math.ceil(cells.length / rows);
-    grid.style.gridTemplateColumns = 'repeat(' + cols + ', max-content)';
+    grid.style.gridTemplateColumns = 'repeat(' + Math.ceil(cells.length / rows) + ', max-content)';
     while (grid.firstChild) grid.removeChild(grid.firstChild);
     cells.forEach(function (c) { grid.appendChild(c); });
     bar.style.display = 'block';
-    fit();
+    fit(cfg.size);
   }
 
   // Keep the bar on one/two thin rows: shrink text until it fits the width.
-  function fit() {
+  var sizeNow = 100;
+  function fit(size) {
+    sizeNow = size;
     var fs = window.innerWidth * 0.0155 * (size / 100);
     bar.style.fontSize = fs + 'px';
     var maxW = window.innerWidth * 0.985;
@@ -178,7 +221,54 @@
       bar.style.fontSize = fs + 'px';
     }
   }
-  window.addEventListener('resize', fit);
+  window.addEventListener('resize', function () { fit(sizeNow); });
+
+  var state = null;     // live state from the server
+  var replay = null;    // { rec, startAt } in replay mode
+  function cfgNow() { return state && state.overlay ? state.overlay : linkCfg; }
+
+  function liveModel() {
+    return {
+      label: state.label,
+      timerText: state.timer ? liveTimerText(state.timer) : null,
+      judges: state.judges,
+      n: Object.keys(state.judges).length,
+      aliases: state.aliases,
+    };
+  }
+  // A recorded routine at time r (ms since its track started).
+  function replayModel() {
+    var rec = replay.rec;
+    var r = serverNow() - replay.startAt;
+    var judges = {};
+    Object.keys(rec.start || {}).forEach(function (k) { judges[k] = { pos: rec.start[k].pos, neg: rec.start[k].neg }; });
+    rec.presses.forEach(function (p) {
+      if (p.at - rec.startAt <= r) judges[p.judge] = { pos: p.pos, neg: p.neg };
+    });
+    var elapsed = 0;
+    for (var i = rec.timeline.length - 1; i >= 0; i--) {
+      var e = rec.timeline[i], off = e.at - rec.startAt;
+      if (off <= Math.max(r, 0)) { elapsed = e.elapsedMs + (e.running ? Math.max(0, r - off) : 0); break; }
+    }
+    return {
+      label: rec.label,
+      timerText: fmtTimer(rec.direction, rec.durationMs, elapsed),
+      judges: judges,
+      n: Math.max(rec.aliases.length, Object.keys(judges).length),
+      aliases: rec.aliases,
+      r: r,
+    };
+  }
+  function tick() {
+    var cfg = cfgNow();
+    var model = replayMode ? (replay ? replayModel() : null) : (state ? liveModel() : null);
+    if (!model) { bar.style.display = 'none'; return; }
+    var sig = JSON.stringify([cfg, model.label, model.judges, model.aliases, !!model.timerText]);
+    if (sig !== lastSig) { lastSig = sig; draw(model, cfg); }
+    else if (timerSpan && model.timerText) timerSpan.textContent = model.timerText;
+    if (replayMode && debug) setDebug('replay: ' + (replay.rec.label || '') + ' ' + Math.max(0, Math.round(model.r / 1000)) + 's');
+  }
+  setInterval(tick, 100);
 
   // ---- connection
   var WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
@@ -206,22 +296,30 @@
 
     mine.onopen = function () {
       lastMsgAt = Date.now();
-      mine.send(JSON.stringify({ type: 'hello', role: 'viewer', key: key }));
+      mine.send(JSON.stringify({ type: 'hello', role: replayMode ? 'replay' : 'viewer', key: key }));
     };
     mine.onmessage = function (e) {
       if (mine !== ws) return;
       lastMsgAt = Date.now();
       var msg;
       try { msg = JSON.parse(e.data); } catch (err) { return; }
+      syncClock(msg.now);
       if (msg.type === 'ready') {
         backoffIdx = 0;
         connectingSince = 0;
         state = msg.state;
-        setDebug('connected: ' + msg.event.name);
-        render();
+        if (replayMode) { replay = msg.replay || null; setDebug(replay ? 'replay loaded' : 'replay overlay: waiting for a replay'); }
+        else setDebug('connected: ' + msg.event.name);
+        lastSig = '';
+        tick();
       } else if (msg.type === 'state') {
         state = msg.state;
-        render();
+        tick();
+      } else if (msg.type === 'replay' && replayMode) {
+        replay = msg.replay || null;
+        lastSig = '';
+        if (!replay) setDebug('replay overlay: waiting for a replay');
+        tick();
       } else if (msg.type === 'error') {
         setDebug('error: ' + msg.message);
         retryAfter = 30000; // bad link / expired / full: try again slowly
@@ -250,6 +348,7 @@
 
   window.addEventListener('online', function () { backoffIdx = 0; openSocket(); });
 
+  useFont(linkCfg.font);
   if (!key) setDebug('no overlay key in URL');
   openSocket();
 })();
