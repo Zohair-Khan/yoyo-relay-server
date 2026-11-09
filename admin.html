@@ -284,6 +284,8 @@
     refs.hub = el('div', { class: 'v' });
     refs.music = el('div', { class: 'v' });
     refs.timer = el('div', { class: 'v' });
+    refs.broadcast = el('div', { class: 'v' });
+    refs.gfx = el('div', { class: 'v' });
     refs.live = el('div', { class: 'live' });
     refs.liveLine = el('div', { class: 'live-line' });
     refs.grace = el('div', { class: 'grace hidden' });
@@ -301,6 +303,11 @@
     var openMusic = el('button', { class: 'grey', text: 'Open', 'aria-label': 'Open the music page', onclick: function () { window.open(refs.musicUrl, '_blank'); } });
     var copyTimer = el('button', { class: 'grey', text: 'Copy', 'aria-label': 'Copy timer display link', onclick: function () { copy(refs.timerUrl, copyTimer, refs.timer); } });
     var openTimer = el('button', { class: 'grey', text: 'Open', 'aria-label': 'Open the timer display', onclick: function () { window.open(refs.timerUrl, '_blank'); } });
+    var copyBroadcast = el('button', { class: 'grey', text: 'Copy', 'aria-label': 'Copy Broadcast page link', onclick: function () { copy(refs.broadcastUrl, copyBroadcast, refs.broadcast); } });
+    var openBroadcast = el('button', { class: 'grey', text: 'Open', 'aria-label': 'Open the Broadcast page', onclick: function () { window.open(refs.broadcastUrl, '_blank'); } });
+    var copyGfx = el('button', { class: 'grey', text: 'Copy', 'aria-label': 'Copy graphics URL', onclick: function () { copy(refs.gfxUrl, copyGfx, refs.gfx); } });
+    var openGfx = el('button', { class: 'grey', text: 'Preview', 'aria-label': 'Preview the broadcast graphics', title: 'Opens the graphics as they look on stream now',
+      onclick: function () { window.open(refs.gfxUrl, '_blank'); } });
     var copyScore = el('button', { class: 'grey', text: 'Copy', 'aria-label': 'Copy judging page link', onclick: function () { copy(refs.scoreUrl, copyScore, refs.score); } });
     var openScore = el('button', { class: 'grey', text: 'Open', 'aria-label': 'Open the judging page', onclick: function () { window.open(refs.scoreUrl, '_blank'); } });
     var copyOverlay = el('button', { class: 'grey', text: 'Copy', 'aria-label': 'Copy overlay URL', onclick: function () { copy(refs.overlayUrl, copyOverlay, refs.overlay); } });
@@ -382,7 +389,9 @@
       field('Judging', refs.score, [copyScore, openScore]),
       field('Music', refs.music, [copyMusic, openMusic]),
       field(el('span', null, 'Timer display', el('small', { text: 'for a stage or judges’ screen' })), refs.timer, [copyTimer, openTimer]),
+      field(el('span', null, 'Broadcast', el('small', { text: 'for the producer' })), refs.broadcast, [copyBroadcast, openBroadcast]),
       field(el('span', null, 'Overlay URL', el('small', { text: 'for OBS' })), refs.overlay, [copyOverlay, previewOverlay]),
+      field(el('span', null, 'Graphics URL', el('small', { text: 'for OBS: Starting Soon' })), refs.gfx, [copyGfx, openGfx]),
       el('details', { class: 'obs' },
         el('summary', { text: 'OBS setup and overlay options' }),
         el('div', { class: 'hint' },
@@ -442,6 +451,8 @@
     r.hubUrl = location.origin + '/?code=' + encodeURIComponent(ev.scorerCode);
     r.musicUrl = location.origin + '/music?code=' + encodeURIComponent(ev.scorerCode);
     r.timerUrl = location.origin + '/timer/' + ev.viewKey;
+    r.broadcastUrl = location.origin + '/broadcast?code=' + encodeURIComponent(ev.scorerCode);
+    r.gfxUrl = location.origin + '/gfx/' + ev.viewKey;
     r.name.textContent = ev.name;
     r.badge.textContent = BADGES[ev.status] || ev.status.toUpperCase();
     r.badge.className = 'badge ' + ev.status;
@@ -466,6 +477,8 @@
     r.hub.textContent = r.hubUrl;
     r.music.textContent = r.musicUrl;
     r.timer.textContent = r.timerUrl;
+    r.broadcast.textContent = r.broadcastUrl;
+    r.gfx.textContent = r.gfxUrl;
     if (document.activeElement !== r.judgeSel && r.confirm.classList.contains('hidden')) r.judgeSel.value = String(ev.judges);
     r.revokeBtn.textContent = ev.revoked ? 'Enable event' : 'Disable event';
     var nrec = ev.live.recordings || 0;
@@ -480,6 +493,8 @@
     r.liveLine.appendChild(item(live.viewers > 0, 'Overlay: ' + (live.viewers ? 'connected' + (live.viewers > 1 ? ' (' + live.viewers + ' open)' : '') : 'not connected')));
     r.liveLine.appendChild(item(live.music > 0, 'Music: ' + (live.music ? 'connected' : 'not connected')));
     r.liveLine.appendChild(item(live.displays > 0, 'Timer display: ' + (live.displays ? 'connected' + (live.displays > 1 ? ' (' + live.displays + ' open)' : '') : 'not connected')));
+    r.liveLine.appendChild(item(live.producers > 0, 'Broadcast: ' + (live.producers ? 'connected' : 'not connected')));
+    r.liveLine.appendChild(item(live.gfx > 0, 'Graphics: ' + (live.gfx ? 'connected' + (live.gfx > 1 ? ' (' + live.gfx + ' open)' : '') : 'not connected')));
     r.liveLine.appendChild(item(claimed.length > 0, 'Judges joined: ' + (claimed.length ? claimed.length : 'none') + ' of ' + ev.judges
       + (claimed.length ? ' (Judge ' + claimed.join(', ') + ')' : '')));
     var holding = claimed.length > 0 && live.scorers === 0;

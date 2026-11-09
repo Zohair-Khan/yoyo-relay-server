@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Broadcast graphics</title>
+<link rel="preload" href="/fonts/saira-latin.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+  /* Saira (SIL Open Font License), served by this server so the stream never waits on a font CDN */
+  @font-face { font-family: 'Saira'; font-style: normal; font-weight: 400 900; font-stretch: 50% 125%; font-display: block;
+    src: url(/fonts/saira-latin.woff2) format('woff2'); }
+
+  /* Always transparent: the background is set up in OBS under this source.
+     Each piece carries its own panel. Per-piece colours arrive as --panel / --accent / --ink (+ derived shades). */
+  :root { --ease: cubic-bezier(.16, 1, .3, 1); --skew: -12deg; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  body { font-family: 'Saira', 'Arial Narrow', sans-serif; -webkit-font-smoothing: antialiased; }
+  .hidden { display: none !important; }
+
+  /* the 1920x1080 scene (or one piece at its own size) scaled to the window */
+  #stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+
+  .piece { position: absolute; left: 0; top: 0; transform-origin: 0 0; color: var(--ink); font-family: var(--font, 'Saira'), 'Saira', 'Arial Narrow', sans-serif; }
+  .pin { position: relative; opacity: 0;
+    clip-path: polygon(-100px -100px, -100px -100px, calc(-100px - var(--slant)) calc(100% + 100px), calc(-100px - var(--slant)) calc(100% + 100px));
+    transition: clip-path .35s cubic-bezier(.7, 0, .84, 0), opacity .35s ease-in; }
+  /* on air: each piece wipes in along the angle, in a stagger */
+  .on .pin { opacity: 1;
+    clip-path: polygon(-100px -100px, calc(100% + 100px + var(--slant)) -100px, calc(100% + 100px) calc(100% + 100px), calc(-100px - var(--slant)) calc(100% + 100px));
+    transition: clip-path .85s var(--ease) var(--delay, 0s), opacity .3s ease-out var(--delay, 0s); }
+  .static .pin, .static .pin * { transition: none !important; }
+
+  /* ---------- logo (or the event name when there is no logo) */
+  .p-logo .pin { width: 700px; height: 520px; display: flex; align-items: center; justify-content: center; }
+  .p-logo img { max-width: 700px; max-height: 520px; object-fit: contain; display: block; filter: drop-shadow(0 18px 40px rgba(0, 0, 0, .45)); }
+  .mark-text { position: relative; isolation: isolate; box-sizing: border-box; max-width: 700px; padding: 34px 46px 38px; font-weight: 900; font-stretch: 72%;
+    text-transform: uppercase; line-height: .88; letter-spacing: -.01em; font-size: 150px; }
+  .mark-text::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--panel-a); transform: skewX(var(--skew)); box-shadow: 0 24px 50px rgba(0, 0, 0, .35); }
+  .noplate .mark-text { padding: 0; text-shadow: 0 6px 30px rgba(0, 0, 0, .5); }
+  .noplate .mark-text::before { display: none; }
+  .mark-text::after { content: ''; display: block; width: 220px; height: 16px; margin-top: 34px; background: var(--accent); transform: skewX(var(--skew)); }
+
+  /* ---------- headline */
+  .p-headline .pin { width: 860px; height: 268px; padding: 16px 30px; display: flex; align-items: flex-start; }
+  .hl { position: relative; isolation: isolate; display: inline-block; max-width: 860px; box-sizing: border-box; padding: 14px 44px 18px; }
+  .headline.one { white-space: nowrap; }
+  .hl::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--panel-a); transform: skewX(var(--skew)); box-shadow: 0 24px 50px rgba(0, 0, 0, .35); }
+  .noplate .hl { padding: 0; }
+  .noplate .hl::before { display: none; }
+  .noplate .headline { text-shadow: 0 6px 30px rgba(0, 0, 0, .45); }
+  .headline { margin: 0; font-weight: 900; font-stretch: 75%; font-size: 150px; line-height: .86; text-transform: uppercase; letter-spacing: -.012em; }
+
+  /* ---------- countdown: label tab, plate, digits in fixed slots, the accent double edge beside it */
+  .p-countdown .pin { width: 800px; height: 250px; padding: 0 24px 20px 70px; }
+  .plate { position: relative; padding-left: 4px; }
+  .plate::before, .plate::after { content: ''; position: absolute; top: 50px; bottom: 6px; background: var(--accent); transform: skewX(var(--skew)); }
+  .plate::after { left: -30px; width: 6px; }
+  .plate::before { left: -46px; width: 2px; opacity: .45; }
+  .plate-tab { position: relative; z-index: 1; display: inline-block; margin-left: 10px; padding: 10px 30px 8px; background: var(--accent); color: var(--on-accent); transform: skewX(var(--skew)); }
+  .plate-tab span { display: block; transform: skewX(12deg); font-weight: 800; font-stretch: 85%; font-size: 30px; letter-spacing: .06em; text-transform: uppercase; line-height: 1; white-space: nowrap; }
+  .plate-body { height: 200px; margin-top: -6px; background: linear-gradient(180deg, var(--panel-hi), var(--panel)); transform: skewX(var(--skew));
+    box-shadow: 0 24px 50px rgba(0, 0, 0, .35); display: flex; align-items: center; justify-content: center; }
+  .digits { transform: skewX(12deg); display: flex; align-items: center; font-weight: 800; font-stretch: 100%; font-size: 200px; line-height: 1.1; height: 1.1em; color: var(--ink); }
+  .slot { position: relative; width: .6em; height: 1.1em; overflow: hidden; }
+  .slot.sep { width: .3em; }
+  .slot span { position: absolute; left: 0; right: 0; top: 0; text-align: center; }
+  .slot span.in { animation: digitIn .42s var(--ease) both; }
+  .slot span.out { animation: digitOut .32s cubic-bezier(.7, 0, .84, 0) both; }
+  @keyframes digitIn { from { transform: translateY(80%); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes digitOut { to { transform: translateY(-70%); opacity: 0; } }
+  .now-text { transform: skewX(12deg); font-weight: 900; font-stretch: 75%; font-size: 100px; line-height: 1; text-transform: uppercase; color: var(--accent); white-space: nowrap; }
+  .plate.zero .plate-tab { visibility: hidden; }
+
+  /* ---------- run of show: the segment on now and the next three */
+  .p-runofshow .pin { width: 800px; height: 246px; padding: 0 10px; }
+  .today { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .today li { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; align-items: center; gap: 22px; height: 54px; padding: 0 26px 0 30px;
+    position: relative; isolation: isolate; }
+  .today li::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--panel-a); transform: skewX(var(--skew)); }
+  .today li.is-now::before { background: var(--panel-now); }
+  .today .t { font-weight: 700; font-stretch: 90%; font-size: 30px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .today .n { min-width: 0; font-weight: 600; font-stretch: 85%; font-size: 32px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; letter-spacing: .01em; }
+  .today .n.two { white-space: normal; line-height: 1; font-size: 24px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .today .tag { font-weight: 800; font-stretch: 85%; font-size: 22px; letter-spacing: .08em; text-transform: uppercase; padding: 5px 16px 4px; transform: skewX(var(--skew)); line-height: 1; }
+  .today .tag span { display: block; transform: skewX(12deg); }
+  .today .tag.now { background: var(--accent); color: var(--on-accent); }
+  .today .tag.next { box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent); }
+
+  /* ---------- event bar: event name on the accent slab, place and date on the panel */
+  .p-eventbar .pin { width: 1120px; height: 104px; padding: 0 12px; display: flex; }
+  .p-eventbar .pin > div { transform: skewX(var(--skew)); display: flex; align-items: center; min-width: 0; }
+  .p-eventbar .pin > div > * { transform: skewX(12deg); }
+  .slab-event { background: var(--accent); color: var(--on-accent); padding: 0 46px 0 110px; flex: 0 1 auto; }
+  .slab-event span { font-weight: 800; font-stretch: 78%; font-size: 46px; text-transform: uppercase; white-space: nowrap; letter-spacing: -.005em; }
+  .slab-event span.two { white-space: normal; line-height: .95; }
+  .slab-place { background: var(--panel); flex: 1 0 440px; padding: 0 70px 0 40px; }
+  .slab-place > span { font-weight: 600; font-stretch: 85%; font-size: 30px; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; color: var(--ink-soft); }
+  .slab-place b { color: var(--ink); font-weight: 700; }
+  .slab-place i { font-style: normal; color: var(--accent); padding: 0 14px; }
+
+  /* ---------- sponsors: a strip of logos, up to four at a time; more rotate in groups */
+  .p-sponsors .pin { width: 900px; height: 104px; padding: 0 12px; }
+  .strip { height: 104px; background: var(--panel); transform: skewX(var(--skew)); display: flex; align-items: center; justify-content: center; padding: 0 60px; }
+  .sponsor-set { transform: skewX(12deg); display: flex; align-items: center; justify-content: center; gap: 40px; transition: opacity .5s ease-out; }
+  .sponsor-set.fading { opacity: 0; }
+  .sponsor-set img { height: 58px; max-width: var(--spw, 190px); object-fit: contain; display: block; }
+
+  #msg { position: absolute; left: 40px; bottom: 40px; max-width: 900px; padding: 18px 24px; font: 600 28px/1.35 'Saira', sans-serif; color: #fff; background: rgba(120, 20, 20, .9); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .slot span.in, .slot span.out { animation-duration: .01s; }
+  }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="msg" class="hidden"></div>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  function make(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  var params = new URLSearchParams(location.search);
+  var m = location.pathname.match(/^\/gfx\/([^/]+)/);
+  var key = m ? decodeURIComponent(m[1]) : (params.get('key') || '');
+  var preview = params.get('preview') === '1';   // the Broadcast page's editor: always shows the scene
+  var only = params.get('piece') || '';          // DIY: one piece as its own source
+
+  // ---- pieces: native size (the box the editor drags and the size of a DIY source), default place, entrance delay
+  var PIECES = {
+    logo:      { w: 700,  h: 520, x: 110,  y: 210, delay: .05 },
+    headline:  { w: 920,  h: 300, x: 1000, y: 100, delay: .14 },
+    countdown: { w: 894,  h: 270, x: 960,  y: 380, delay: .26 },
+    runofshow: { w: 820,  h: 246, x: 1020, y: 654, delay: .38 },
+    eventbar:  { w: 1144, h: 104, x: -72,  y: 940, delay: .18 },
+    sponsors:  { w: 924,  h: 104, x: 1068, y: 940, delay: .3 },
+  };
+  var ORDER = ['logo', 'headline', 'countdown', 'runofshow', 'eventbar', 'sponsors'];
+  var DEFAULT_COLORS = { panel: '#0c1a45', accent: '#f2c230', text: '#ffffff' };
+  var SPONSOR_PANEL = '#ffffff';
+  // Fonts the producer can pick (Saira is self-hosted; the others load from Google Fonts when used).
+  var FONTS = { 'Saira': '', 'Barlow Condensed': '600;700;800;900', 'Roboto Condensed': '600;700;800;900', 'Oswald': '500;600;700',
+    'Teko': '500;600;700', 'Rajdhani': '600;700', 'Chakra Petch': '600;700', 'Exo 2': '600;700;800;900', 'Anton': '400', 'Bebas Neue': '400', 'Russo One': '400' };
+  if (only && !PIECES[only]) only = '';
+
+  // ---- colour helpers (no color-mix: OBS ships an older Chromium)
+  function rgb(hex) { var n = parseInt(hex.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+  function hexOf(c) { return '#' + c.map(function (v) { return Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0'); }).join(''); }
+  function mix(a, b, t) { var x = rgb(a), y = rgb(b); return hexOf([0, 1, 2].map(function (i) { return x[i] + (y[i] - x[i]) * t; })); }
+  function lum(hex) { var c = rgb(hex).map(function (v) { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; }
+  function alpha(hex, a) { var c = rgb(hex); return 'rgba(' + c[0] + ', ' + c[1] + ', ' + c[2] + ', ' + a + ')'; }
+
+  // ---- data: from the server, or (in the editor) straight from the Broadcast page
+  var bcast = null, assets = null, clockOffset = 0, failed = false, local = null;
+  function data() { return local ? local.b : bcast; }
+  function art() { return local ? local.assets : assets; }
+
+  // ---- build the pieces once
+  var els = {};
+  function buildPieces() {
+    var stage = $('stage');
+    (only ? [only] : ORDER).forEach(function (k) {
+      var p = make('div', 'piece p-' + k);
+      var pin = make('div', 'pin');
+      p.appendChild(pin);
+      p.style.setProperty('--slant', Math.round(PIECES[k].h * 0.2126) + 'px');
+      p.style.setProperty('--delay', (only ? 0 : PIECES[k].delay) + 's');
+      els[k] = { root: p, pin: pin };
+      stage.appendChild(p);
+    });
+    if (els.logo) { els.logo.text = make('div', 'mark-text hidden'); els.logo.words = make('span'); els.logo.text.appendChild(els.logo.words); els.logo.pin.appendChild(els.logo.text); }
+    if (els.headline) { els.headline.box = make('div', 'hl'); els.headline.h = make('h1', 'headline'); els.headline.box.appendChild(els.headline.h); els.headline.pin.appendChild(els.headline.box); }
+    if (els.countdown) {
+      var plate = make('div', 'plate hidden'), tab = make('div', 'plate-tab'), lab = make('span'), body = make('div', 'plate-body'), digits = make('div', 'digits');
+      tab.appendChild(lab); body.appendChild(digits); plate.appendChild(tab); plate.appendChild(body); els.countdown.pin.appendChild(plate);
+      els.countdown.plate = plate; els.countdown.label = lab; els.countdown.digits = digits;
+    }
+    if (els.runofshow) { els.runofshow.ol = make('ol', 'today'); els.runofshow.pin.appendChild(els.runofshow.ol); }
+    if (els.eventbar) {
+      var se = make('div', 'slab-event'), st = make('span'), sp = make('div', 'slab-place'), pl = make('span');
+      se.appendChild(st); sp.appendChild(pl); els.eventbar.pin.appendChild(se); els.eventbar.pin.appendChild(sp);
+      els.eventbar.slab = se; els.eventbar.title = st; els.eventbar.place = pl;
+    }
+    if (els.sponsors) {
+      var strip = make('div', 'strip'), set = make('div', 'sponsor-set');
+      strip.appendChild(set); els.sponsors.pin.appendChild(strip); els.sponsors.strip = strip; els.sponsors.set = set;
+    }
+  }
+  buildPieces();
+
+  // ---- fit the stage (or the one piece) to the window
+  function fitStage() {
+    var w = only ? PIECES[only].w : 1920, h = only ? PIECES[only].h : 1080;
+    var st = $('stage');
+    st.style.width = w + 'px'; st.style.height = h + 'px';
+    var s = Math.min(window.innerWidth / w, window.innerHeight / h);
+    st.style.transform = 'scale(' + s + ')';
+    // a DIY piece sits top-left (make the OBS source its native size); the full scene centres
+    st.style.left = only ? '0px' : Math.max(0, (window.innerWidth - w * s) / 2) + 'px';
+    st.style.top = only ? '0px' : Math.max(0, (window.innerHeight - h * s) / 2) + 'px';
+  }
+  window.addEventListener('resize', fitStage);
+  fitStage();
+
+  var loadedFonts = { 'Saira': true };
+  function useFont(name) {
+    if (!name || loadedFonts[name] || !(name in FONTS)) return;
+    loadedFonts[name] = true;
+    var l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(name).replace(/%20/g, '+') + ':wght@' + FONTS[name] + '&display=block';
+    document.head.appendChild(l);
+    if (document.fonts) document.fonts.load('700 40px "' + name + '"').then(function () { fitAll(); }, function () {});
+  }
+
+  // ---- place and style each piece from the layout
+  function pieceCfg(k) {
+    var l = (data() && data().layout) || {};
+    var c = l[k] || {};
+    return {
+      x: Number.isFinite(c.x) ? c.x : PIECES[k].x, y: Number.isFinite(c.y) ? c.y : PIECES[k].y,
+      scale: Number.isFinite(c.scale) ? c.scale : 1, show: c.show !== false, font: c.font || '',
+      colors: c.colors || {}, z: Number.isFinite(c.z) ? c.z : 0, plate: c.plate !== false,
+    };
+  }
+  function applyLayout() {
+    Object.keys(els).forEach(function (k) {
+      var c = pieceCfg(k), e = els[k].root;
+      e.style.transform = only ? 'none' : 'translate(' + c.x + 'px, ' + c.y + 'px) scale(' + c.scale + ')';
+      e.classList.toggle('hidden', !c.show);
+      e.classList.toggle('noplate', !c.plate);
+      e.style.zIndex = String(100 + c.z);
+      var panel = c.colors.panel || (k === 'sponsors' ? SPONSOR_PANEL : DEFAULT_COLORS.panel);
+      var accent = c.colors.accent || DEFAULT_COLORS.accent;
+      var ink = c.colors.text || DEFAULT_COLORS.text;
+      var light = lum(panel) > .45;
+      e.style.setProperty('--panel', panel);
+      e.style.setProperty('--panel-hi', mix(panel, light ? '#000000' : '#ffffff', .06));
+      e.style.setProperty('--panel-now', mix(panel, light ? '#000000' : '#ffffff', .2));
+      e.style.setProperty('--panel-a', alpha(panel, .9));
+      e.style.setProperty('--accent', accent);
+      // text on the accent: the panel colour when that reads, otherwise black or white
+      var onAccent = Math.abs(lum(accent) - lum(panel)) > .3 ? panel : (lum(accent) > .35 ? '#000000' : '#ffffff');
+      e.style.setProperty('--on-accent', onAccent);
+      e.style.setProperty('--ink', ink);
+      e.style.setProperty('--ink-soft', mix(ink, panel, .22));
+      e.style.setProperty('--font', c.font && c.font in FONTS ? '"' + c.font + '"' : 'Saira');
+      useFont(c.font);
+    });
+  }
+
+  // ---- scene
+  var onAir = false;
+  function setScene() {
+    var b = data();
+    var want = !!b && (preview || b.scene === 'starting');
+    document.body.classList.toggle('static', preview);
+    if (want === onAir) return;
+    onAir = want;
+    if (want) { $('stage').classList.remove('on'); void $('stage').offsetWidth; }
+    $('stage').classList.toggle('on', want);
+  }
+
+  function render() {
+    if (failed) return;
+    var b = data() || {};
+    applyLayout();
+    renderLogo(b);
+    if (els.headline) els.headline.h.textContent = b.headline || 'Starting soon';
+    renderBar(b);
+    renderSponsors();
+    renderRun(b);
+    renderClock(true);
+    fitAll();
+    setScene();
+  }
+
+  function renderLogo(b) {
+    if (!els.logo) return;
+    var logo = art() && art().logo, pin = els.logo.pin;
+    var img = pin.querySelector('img');
+    if (!logo && img) img.remove();
+    if (logo && (!img || img.getAttribute('src') !== logo)) {
+      if (!img) { img = document.createElement('img'); img.alt = ''; pin.insertBefore(img, els.logo.text); }
+      img.src = logo;
+    }
+    var title = b.title || '';
+    els.logo.text.classList.toggle('hidden', !!logo || !title);
+    els.logo.words.textContent = title;
+  }
+
+  function renderBar(b) {
+    if (!els.eventbar) return;
+    var e = els.eventbar;
+    e.title.textContent = b.title || '';
+    e.slab.classList.toggle('hidden', !b.title);
+    e.place.textContent = '';
+    [b.place, b.date].filter(Boolean).forEach(function (t, i) {
+      if (i) e.place.appendChild(make('i', null, '/'));
+      e.place.appendChild(make(i ? 'span' : 'b', null, t));
+    });
+  }
+
+  // ---- fitting: every piece keeps its words inside its own box
+  function fitAll() {
+    if (els.logo && !els.logo.text.classList.contains('hidden')) {
+      // the event name is the hero when there is no logo: as big as fits the 700x520 box (measured on the words, not the slanted panel)
+      var mt = els.logo.text, words = els.logo.words, size = 170; mt.style.fontSize = size + 'px';
+      var room = function () { var cs = getComputedStyle(mt); return 700 - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight); };
+      while (size > 60 && (mt.offsetHeight > 500 || words.offsetWidth > room() + 1)) { size -= 6; mt.style.fontSize = size + 'px'; }
+    }
+    if (els.headline) {
+      var h = els.headline.h, hb = els.headline.box, hs = 150;
+      h.classList.add('one'); h.style.fontSize = hs + 'px';
+      while (hs > 112 && hb.scrollWidth > hb.clientWidth + 1) { hs -= 4; h.style.fontSize = hs + 'px'; }
+      if (hb.scrollWidth > hb.clientWidth + 1) {
+        h.classList.remove('one'); hs = 150; h.style.fontSize = hs + 'px';
+        while (hs > 50 && (hb.offsetHeight > 268 || h.scrollWidth > h.clientWidth + 1)) { hs -= 4; h.style.fontSize = hs + 'px'; }
+      }
+    }
+    if (els.countdown) {
+      var lab = els.countdown.label, ls = 30; lab.style.fontSize = ls + 'px';
+      while (ls > 18 && lab.parentNode.offsetWidth > 760) { ls -= 2; lab.style.fontSize = ls + 'px'; }
+    }
+    if (els.eventbar && els.eventbar.title.textContent) {
+      var slab = els.eventbar.slab, span = els.eventbar.title, s = 46;
+      span.classList.remove('two'); span.style.fontSize = s + 'px';
+      while (s > 32 && slab.scrollWidth > slab.clientWidth + 1) { s -= 2; span.style.fontSize = s + 'px'; }
+      if (slab.scrollWidth > slab.clientWidth + 1) {
+        span.classList.add('two'); s = 38; span.style.fontSize = s + 'px';
+        while (s > 22 && (span.offsetHeight > s * 0.95 * 2 + 4 || slab.scrollWidth > slab.clientWidth + 1)) { s -= 2; span.style.fontSize = s + 'px'; }
+      }
+    }
+    if (els.eventbar) {
+      var pl = els.eventbar.place, ps = 30; pl.style.fontSize = ps + 'px';
+      while (ps > 18 && pl.scrollWidth > pl.parentNode.clientWidth - 110) { ps -= 2; pl.style.fontSize = ps + 'px'; }
+    }
+    if (els.runofshow) {
+      [].forEach.call(els.runofshow.ol.querySelectorAll('.n'), function (n) {
+        // shrink a little, then narrow, then take two lines: never far off the other rows' size
+        var z = 32; n.classList.remove('two'); n.style.fontSize = z + 'px'; n.style.fontStretch = '';
+        while (z > 26 && n.scrollWidth > n.clientWidth + 1) { z -= 2; n.style.fontSize = z + 'px'; }
+        if (n.scrollWidth > n.clientWidth + 1) n.style.fontStretch = '72%';
+        if (n.scrollWidth > n.clientWidth + 1) { n.style.fontSize = ''; n.style.fontStretch = ''; n.classList.add('two'); }
+      });
+    }
+  }
+
+  // ---- run of show
+  var runSig = '';
+  function renderRun(b) {
+    if (!els.runofshow) return;
+    var run = b.run || [];
+    var start = b.nowIdx >= 0 ? b.nowIdx : 0;
+    var rows = run.slice(start, start + 4);
+    var sig = JSON.stringify([rows, b.nowIdx]);
+    if (sig === runSig) return;
+    runSig = sig;
+    var ol = els.runofshow.ol; ol.textContent = '';
+    rows.forEach(function (r, i) {
+      var li = make('li');
+      var isNow = b.nowIdx >= 0 && i === 0;
+      var isNext = b.nowIdx >= 0 ? i === 1 : i === 0;
+      if (isNow) li.className = 'is-now';
+      li.appendChild(make('span', 't', r.time || ''));
+      li.appendChild(make('span', 'n', r.title || ''));
+      if (isNow || isNext) {
+        var tag = make('span', 'tag ' + (isNow ? 'now' : 'next'));
+        tag.appendChild(make('span', null, isNow ? 'Now' : 'Next'));
+        li.appendChild(tag);
+      } else li.appendChild(make('span'));
+      ol.appendChild(li);
+    });
+  }
+
+  // ---- sponsors: groups of up to four, sized to the strip
+  var sponsorSig = '', sponsorGroup = 0, sponsorTimer = null, PER_GROUP = 4;
+  function renderSponsors() {
+    if (!els.sponsors) return;
+    var list = (art() && art().sponsors) || [];
+    els.sponsors.strip.classList.toggle('hidden', !list.length);
+    var sig = list.length + ':' + (art() && art().sig);
+    if (sig === sponsorSig) return;
+    sponsorSig = sig; sponsorGroup = 0;
+    clearInterval(sponsorTimer);
+    showSponsorGroup(false);
+    if (list.length > PER_GROUP) sponsorTimer = setInterval(function () { sponsorGroup++; showSponsorGroup(true); }, 10000);
+  }
+  function showSponsorGroup(fade) {
+    var list = (art() && art().sponsors) || [];
+    var set = els.sponsors.set;
+    var groups = Math.ceil(list.length / PER_GROUP) || 1;
+    var per = Math.ceil(list.length / groups);
+    var g = sponsorGroup % groups;
+    // each logo's width cap so a group fits the 900px strip
+    set.style.setProperty('--spw', Math.floor(Math.min(190, (900 - 160 - (per - 1) * 40) / per)) + 'px');
+    var fill = function () {
+      set.textContent = '';
+      list.slice(g * per, g * per + per).forEach(function (src) { var img = document.createElement('img'); img.alt = ''; img.src = src; set.appendChild(img); });
+      set.classList.remove('fading');
+    };
+    if (!fade) { fill(); return; }
+    set.classList.add('fading');
+    setTimeout(fill, 520);
+  }
+
+  // ---- countdown: digits in fixed slots; each changed slot rolls
+  var clockSig = '';
+  function clockMs() {
+    var b = data(), c = b && b.countdown;
+    if (!c) return null;
+    var off = local ? 0 : clockOffset;
+    return Math.max(0, c.remainingMs - (c.running ? Math.max(0, Date.now() + off - c.at) : 0));
+  }
+  function fmt(ms) {
+    var s = Math.ceil(ms / 1000);
+    var h = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
+    var two = function (n) { return String(n).padStart(2, '0'); };
+    return h ? h + ':' + two(mm) + ':' + two(ss) : two(mm) + ':' + two(ss);
+  }
+  function renderClock(force) {
+    if (!els.countdown || failed) return;
+    var b = data() || {};
+    var ms = clockMs();
+    var plate = els.countdown.plate;
+    plate.classList.toggle('hidden', ms === null);
+    if (ms === null) { clockSig = ''; return; }
+    els.countdown.label.textContent = b.label || 'Show starts in';
+    var zero = ms <= 0;
+    plate.classList.toggle('zero', zero);
+    var text = zero ? 'NOW' : fmt(ms);
+    if (text === clockSig && !force) return;
+    var digits = els.countdown.digits;
+    if (zero) {
+      if (clockSig !== 'NOW') { digits.textContent = ''; digits.appendChild(make('div', 'now-text', 'Any moment now')); }
+      clockSig = 'NOW';
+      return;
+    }
+    if (!clockSig || clockSig === 'NOW' || clockSig.length !== text.length) {
+      digits.textContent = '';
+      text.split('').forEach(function (ch) {
+        var slot = make('span', 'slot' + (ch === ':' ? ' sep' : ''));
+        slot.appendChild(make('span', null, ch));
+        digits.appendChild(slot);
+      });
+    } else {
+      var slots = digits.children;
+      for (var i = 0; i < text.length; i++) {
+        if (text[i] === clockSig[i]) continue;
+        var slotEl = slots[i];
+        [].forEach.call(slotEl.querySelectorAll('.out'), function (o) { o.remove(); });
+        var old = slotEl.lastElementChild;
+        if (old) { old.className = 'out'; setTimeout(function (o) { return function () { o.remove(); }; }(old), 340); }
+        slotEl.appendChild(make('span', 'in', text[i]));
+      }
+    }
+    clockSig = text;
+  }
+  setInterval(function () { renderClock(false); }, 100);
+
+  // ---- the editor on the Broadcast page drives its preview directly (same site)
+  window.gfx = {
+    pieces: PIECES, order: ORDER, fonts: Object.keys(FONTS), colors: DEFAULT_COLORS, sponsorPanel: SPONSOR_PANEL,
+    setLocal: function (b, a) { local = { b: b, assets: a || { logo: null, sponsors: [], sig: '' } }; failed = false; $('msg').classList.add('hidden'); render(); },
+  };
+
+  // ---- connection (same pattern as the overlay); on stream a dropped connection changes nothing
+  var WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  var BACKOFF = [500, 1000, 2000, 3000, 5000];
+  var ws = null, backoffIdx = 0, reconnectTimer = null, lastMsgAt = 0, connectingSince = 0;
+  function scheduleReconnect(delay) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(openSocket, delay || BACKOFF[Math.min(backoffIdx++, BACKOFF.length - 1)]);
+  }
+  function showError(text) {
+    if (local) return;
+    failed = true;
+    $('msg').textContent = text;
+    $('msg').classList.remove('hidden');
+  }
+  function openSocket() {
+    clearTimeout(reconnectTimer);
+    if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { /* ignore */ } }
+    var mine = new WebSocket(WS_URL);
+    ws = mine;
+    connectingSince = Date.now();
+    var retryAfter = 0;
+    mine.onopen = function () { lastMsgAt = Date.now(); mine.send(JSON.stringify({ type: 'hello', role: 'gfx', key: key, preview: preview })); };
+    mine.onmessage = function (e) {
+      if (mine !== ws) return;
+      lastMsgAt = Date.now();
+      var msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
+      if (typeof msg.now === 'number') clockOffset = msg.now - Date.now();
+      if (msg.type === 'ready') {
+        backoffIdx = 0; connectingSince = 0;
+        if (!local) { failed = false; $('msg').classList.add('hidden'); }
+        // After a server restart it has nothing until the producer's laptop re-sends: hold the last frame.
+        if (msg.bcast) bcast = msg.bcast;
+        if (msg.assets) assets = msg.assets;
+        if (!bcast) bcast = { scene: 'off', title: msg.event.name, run: [], nowIdx: -1, countdown: null, layout: null };
+        render();
+      } else if (msg.type === 'bcast') {
+        bcast = msg.bcast; if (!local) render();
+      } else if (msg.type === 'assets') {
+        assets = msg.assets; if (!local) render();
+      } else if (msg.type === 'error') {
+        retryAfter = 30000;
+        if (!bcast) showError(msg.message + ' Ask the organizer for the graphics link.');
+      }
+    };
+    mine.onclose = function () {
+      if (mine !== ws) return;
+      ws = null;
+      scheduleReconnect(retryAfter);
+    };
+    mine.onerror = function () { /* onclose handles retry */ };
+  }
+  setInterval(function () {
+    if (!ws) return;
+    var now = Date.now();
+    if (ws.readyState === 1 && now - lastMsgAt > 8000) ws.close();
+    else if (ws.readyState === 0 && connectingSince && now - connectingSince > 10000) ws.close();
+  }, 2000);
+  window.addEventListener('online', function () { backoffIdx = 0; openSocket(); });
+
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { runSig = ''; if (data()) render(); });
+  if (!key) showError('This link is missing its key. Ask the organizer for the graphics link.');
+  else openSocket();
+})();
+</script>
+</body>
+</html>

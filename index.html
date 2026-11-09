@@ -58,7 +58,7 @@
 
   <section class="panel" id="codePanel">
     <h2 class="lead">Enter your event code</h2>
-    <p class="sub">The organizer sent you a code like WORD-WORD-WORD-00. It opens the judging, music and timer pages for your event.</p>
+    <p class="sub">The organizer sent you a code like WORD-WORD-WORD-00. It opens the judging, music, broadcast and timer pages for your event.</p>
     <form class="code-row" id="codeForm">
       <div>
         <label for="codeInput">Event code</label>
@@ -80,6 +80,10 @@
       <li><a class="choice" id="toMusic" href="/music">
         <span class="t">Music</span>
         <span class="d">Queue competitors, play their music with start and end cues, and set the name and timer on the stream.</span>
+        <span class="go">Open →</span></a></li>
+      <li><a class="choice" id="toBroadcast" href="/broadcast">
+        <span class="t">Broadcast</span>
+        <span class="d">For the producer: the run of show, countdowns, your logo and sponsors, and the Starting Soon screen on stream.</span>
         <span class="go">Open →</span></a></li>
       <li><a class="choice" id="toTimer" href="/timer" target="_blank" rel="noopener">
         <span class="t">Timer display</span>
@@ -106,6 +110,7 @@
     $('eventMeta').textContent = ev.judges + (ev.judges === 1 ? ' judge' : ' judges') + ' · code ' + code.toUpperCase();
     $('toScore').href = '/score?code=' + c;
     $('toMusic').href = '/music?code=' + c;
+    $('toBroadcast').href = '/broadcast?code=' + c;
     $('toTimer').href = '/timer/' + encodeURIComponent(ev.viewKey);
     $('codePanel').classList.add('hidden');
     $('pickPanel').classList.remove('hidden');

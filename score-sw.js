@@ -1,14 +1,14 @@
 'use strict';
 
 /*
- * Service worker for the scoring and music pages.
- * Keeps a copy of /score and /music in the browser so a judge or the music
- * person can reload the page while the server is down and keep going from what
+ * Service worker for the scoring, music and Broadcast pages.
+ * Keeps a copy of /score, /music and /broadcast in the browser so a judge, the music
+ * person or the producer can reload the page while the server is down and keep going from what
  * is saved on the device. Always tries the network first, so a deploy is picked
  * up on the next load.
  */
-const CACHE = 'yoyo-pages-v2';
-const PAGES = ['/score', '/music'];
+const CACHE = 'yoyo-pages-v3';
+const PAGES = ['/score', '/music', '/broadcast'];
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();

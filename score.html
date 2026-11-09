@@ -217,6 +217,7 @@
         <a id="navHome" href="/">All pages</a>
         <a id="navScore" aria-current="page">Judging</a>
         <a id="navMusic">Music</a>
+        <a id="navBroadcast">Broadcast</a>
         <a id="navTimer" target="_blank" rel="noopener">Timer display</a>
       </nav>
       <div class="pills">
@@ -782,6 +783,7 @@
     $('navHome').href = '/?code=' + c;
     $('navScore').href = '/score?code=' + c;
     $('navMusic').href = '/music?code=' + c;
+    $('navBroadcast').href = '/broadcast?code=' + c;
     $('navTimer').classList.toggle('hidden', !evt.viewKey);
     if (evt.viewKey) $('navTimer').href = '/timer/' + encodeURIComponent(evt.viewKey);
     $('pageNav').classList.remove('hidden');

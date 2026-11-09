@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Broadcast · Yo-Yo Event Management</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap">
+<style>
+  /* spacing scale (4px base), shared with the scoring, music and admin pages */
+  :root { --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #1a1a1a; color: #eee; margin: 0; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 0 var(--s4) var(--s7); }
+  .hidden { display: none !important; }
+  h1, h2, h3 { margin: 0; }
+  ::placeholder { color: #8f8f8f; opacity: 1; }
+  ::selection { background: #1565c0; color: #fff; }
+
+  label { display: block; font-size: 12px; color: #aaa; margin-bottom: var(--s1); }
+  input[type=text], textarea {
+    padding: 8px 10px; border-radius: 6px; border: 1px solid #3a3a3a; background: #1a1a1a; color: #eee;
+    font: inherit; font-size: 14px; max-width: 100%;
+  }
+  textarea { width: 100%; min-height: 120px; resize: vertical; line-height: 1.5; }
+  button {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px 14px; border: none; border-radius: 6px; font: inherit; font-size: 14px; font-weight: 600;
+    cursor: pointer; background: #1565c0; color: #fff; white-space: nowrap;
+  }
+  button:disabled { background: #444; color: #888; cursor: not-allowed; }
+  button:not(:disabled):hover { filter: brightness(1.15); }
+  button:not(:disabled):active { filter: brightness(.9); }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible, a:focus-visible {
+    outline: 2px solid #64b5f6; outline-offset: 2px;
+  }
+  .btn-grey { background: #444; }
+  .btn-green { background: #2e7d32; }
+  .btn-red { background: #c62828; }
+  .btn-small { padding: 5px 10px; font-size: 13px; }
+  .btn-icon { padding: 6px; width: 32px; height: 32px; background: #333; }
+  button.armed { background: #c62828; }
+  svg.i { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .row { display: flex; gap: var(--s2) var(--s3); align-items: flex-end; flex-wrap: wrap; }
+  .panel { background: #242424; border-radius: 10px; padding: var(--s4); }
+  .muted { color: #999; font-size: 12px; }
+  .hint { font-size: 12px; color: #999; line-height: 1.5; margin: var(--s2) 0 0; }
+  .sec-title { font-size: 14px; font-weight: 600; color: #ccc; }
+
+  /* sticky header: event + page links + connection (same as the music page) */
+  .top { position: sticky; top: 0; z-index: 10; background: #1a1a1a; padding: var(--s3) 0 var(--s1); border-bottom: 1px solid #2a2a2a; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s2) var(--s4); margin-bottom: var(--s2); }
+  .top-id { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--s1) var(--s3); min-width: 0; }
+  .top h1 { font-size: 13px; font-weight: 600; color: #aaa; white-space: nowrap; }
+  .page-name { color: #ddd; }
+  #eventName { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+  .pages { display: flex; gap: var(--s1); flex-wrap: wrap; }
+  .pages a { color: #bbb; text-decoration: none; font-size: 13px; font-weight: 600; padding: 5px 10px; border-radius: 6px; }
+  .pages a:hover { background: #2c2c2c; color: #fff; }
+  .pages a[aria-current="page"] { background: #2c2c2c; color: #fff; box-shadow: inset 0 -2px 0 #1565c0; }
+  .pills { display: flex; gap: var(--s2); flex-wrap: wrap; }
+  .pill { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: #444; color: #ddd; white-space: nowrap; }
+  .pill-ok { background: #2e7d32; color: #fff; }
+  .pill-warn { background: #f9a825; color: #000; }
+  #toast { position: fixed; right: var(--s4); bottom: calc(var(--s4) + env(safe-area-inset-bottom, 0px)); z-index: 20; max-width: min(420px, calc(100vw - 32px));
+    padding: 12px 14px; border-radius: 8px; background: #12304d; border: 1px solid #1565c0; color: #cfe3ff; font-size: 14px; line-height: 1.4;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45); transition: opacity .25s ease-out, transform .25s ease-out; }
+  #toast.gone { opacity: 0; transform: translateY(8px); pointer-events: none; }
+  #banners .banner { padding: 10px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; margin-bottom: var(--s2); }
+  .banner.err { background: #7f1d1d; border: 1px solid #ef5350; color: #ffd6d6; }
+  .banner.warn, .banner.offline { background: #4a3600; border: 1px solid #f9a825; color: #ffd54f; }
+
+  #connectPanel { margin-top: var(--s6); max-width: 560px; }
+  #connectPanel h2 { font-size: 14px; color: #ccc; margin-bottom: var(--s3); }
+  #codeInput { width: 280px; }
+  #connectMsg { margin-top: var(--s2); font-size: 13px; color: #ef9a9a; }
+  #connectMsg:empty { display: none; }
+
+  /* layout: on-air deck and run of show in the main column; the client's details, logos and the OBS link beside it */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: var(--s5); margin-top: var(--s5); align-items: start; }
+  .main, .side { display: flex; flex-direction: column; gap: var(--s5); min-width: 0; }
+
+  input[type=number], select {
+    padding: 8px 10px; border-radius: 6px; border: 1px solid #3a3a3a; background: #1a1a1a; color: #eee; font: inherit; font-size: 14px; max-width: 100%;
+  }
+  select:focus-visible { outline: 2px solid #64b5f6; outline-offset: 2px; }
+  input[type=color] { width: 40px; height: 32px; padding: 2px; border: 1px solid #3a3a3a; border-radius: 6px; background: #1a1a1a; cursor: pointer; }
+
+  /* scene: the live preview is the layout editor */
+  .scene-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s2) var(--s3); margin-bottom: var(--s3); }
+  .scene-id { display: flex; align-items: center; gap: var(--s3); }
+  .scene-id h2 { font-size: 20px; font-weight: 800; }
+  .air { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border-radius: 4px; background: #333; color: #bbb; }
+  .air.live { background: #c62828; color: #fff; }
+  /* transparency checkerboard: the graphics never draw a background */
+  .canvas { position: relative; aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; user-select: none;
+    background: repeating-conic-gradient(#2b2b2b 0 25%, #212121 0 50%) 0 0 / 18px 18px; }
+  .canvas iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
+  .ov { position: absolute; inset: 0; touch-action: none; }
+  .box { position: absolute; border: 1px dashed rgba(255, 255, 255, .4); cursor: move; outline: none; }
+  .box:hover { border-color: rgba(255, 255, 255, .8); }
+  .box.off { border-color: rgba(255, 255, 255, .25); background: rgba(0, 0, 0, .35); }
+  .box.sel { border: 2px solid #64b5f6; }
+  .box:focus-visible { box-shadow: 0 0 0 3px rgba(100, 181, 246, .5); }
+  .box-name { position: absolute; left: 0; top: -19px; font-size: 11px; font-weight: 700; line-height: 15px; padding: 2px 6px; background: rgba(0, 0, 0, .82); color: #ddd; white-space: nowrap; pointer-events: none; display: none; }
+  .box:hover .box-name, .box.sel .box-name { display: block; }
+  /* small canvas: only the selected piece is named */
+  .ov.narrow .box:not(.sel):hover .box-name { display: none; }
+  .box.sel .box-name { background: #1565c0; color: #fff; }
+  .grip { position: absolute; right: -7px; bottom: -7px; width: 14px; height: 14px; background: #64b5f6; border: 2px solid #12304d; border-radius: 2px; cursor: nwse-resize; display: none; }
+  .box.sel .grip { display: block; }
+  .guide { position: absolute; background: #ff4fd8; pointer-events: none; display: none; }
+  .guide.v { top: 0; bottom: 0; width: 1px; }
+  .guide.h { left: 0; right: 0; height: 1px; }
+  .scene-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s2) var(--s3); margin-top: var(--s3); }
+  .chips { display: flex; flex-wrap: wrap; gap: var(--s1); }
+  .chip { background: #333; color: #ddd; padding: 6px 10px; font-size: 13px; }
+  .chip[aria-pressed="true"] { background: #1565c0; color: #fff; }
+  .chip .st { font-weight: 400; color: #999; }
+  .chip[aria-pressed="true"] .st { color: #cfe3ff; }
+  .insp { margin-top: var(--s4); padding-top: var(--s4); border-top: 1px solid #333; display: flex; flex-direction: column; gap: var(--s3); }
+  .insp-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2) var(--s4); }
+  .insp-head h3 { font-size: 16px; font-weight: 800; }
+  .insp-head .check { margin: 0; }
+  .insp-row { display: flex; flex-wrap: wrap; gap: var(--s3); align-items: flex-end; }
+  .insp input[type=number] { width: 92px; font-family: 'Share Tech Mono', Consolas, monospace; }
+  .color-field { display: flex; align-items: center; gap: var(--s2); }
+  .color-field label { margin: 0; min-width: 3.6em; }
+  .diy-line { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2) var(--s3); font-size: 13px; color: #bbb; }
+  .diy-line code { font-family: Consolas, monospace; font-size: 12px; background: #1a1a1a; padding: 4px 6px; border-radius: 4px; word-break: break-all; color: #ddd; }
+  .take { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); }
+  #takeBtn { padding: 12px 22px; font-size: 16px; }
+  .sync { font-size: 12px; color: #999; }
+  .sync.pending { color: #ffd54f; }
+
+  .cd { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3) var(--s5); align-items: start; }
+  .cd-ctl { display: flex; flex-direction: column; gap: var(--s3); }
+  .cd-read { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; padding-bottom: var(--s3); border-bottom: 1px solid #333; }
+  #cdTime { font-family: 'Share Tech Mono', Consolas, monospace; font-size: 56px; line-height: 1; font-variant-numeric: tabular-nums; }
+  #cdTime.idle { color: #777; }
+  #cdTime.zero { color: #ffd54f; }
+  #cdState { font-size: 13px; color: #999; }
+  .cd-set { display: flex; gap: var(--s2); align-items: flex-end; flex-wrap: wrap; }
+  #cdInput { width: 96px; font-family: 'Share Tech Mono', Consolas, monospace; text-align: center; font-size: 16px; }
+  .cd-btns { display: flex; gap: var(--s2); flex-wrap: wrap; }
+  #cdNote { font-size: 12px; color: #999; min-height: 1.2em; }
+  #cdNote.bad { color: #ef9a9a; }
+
+  /* run of show */
+  .run-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--s2) var(--s3); margin-bottom: var(--s3); }
+  .run-head h2 { font-size: 20px; font-weight: 800; }
+  .run-tools { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; }
+  .run { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s1); }
+  .seg { display: grid; grid-template-columns: 2em 84px minmax(0, 1fr) 5.5em 5.6em auto; gap: var(--s2) var(--s3); align-items: center;
+    padding: 8px 10px; background: #242424; border: 1px solid #333; border-radius: 8px; }
+  .seg .num { font-family: 'Share Tech Mono', Consolas, monospace; color: #999; font-size: 15px; text-align: center; }
+  .seg input[type=text] { width: 100%; }
+  .seg .time-in { font-family: 'Share Tech Mono', Consolas, monospace; text-align: center; }
+  .seg .tools { display: flex; gap: var(--s1); }
+  .tag { font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; white-space: nowrap; justify-self: start; }
+  .tag.done { background: #333; color: #bbb; }
+  .tag.now { background: #2e7d32; color: #fff; }
+  .tag.next { background: #1565c0; color: #fff; }
+  .seg.is-done .num, .seg.is-done input { opacity: .6; }
+  .seg.is-now { border-color: #2e7d32; background: #17301a; }
+  .seg.is-next { border-color: #1565c0; }
+  .empty { color: #999; font-size: 13px; line-height: 1.5; padding: var(--s3) 0; }
+  .add-seg { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; gap: var(--s2); margin-top: var(--s3); }
+  .add-seg input { font: inherit; font-size: 14px; }
+  .add-seg .time-in { font-family: 'Share Tech Mono', Consolas, monospace; text-align: center; }
+  details.drawer { margin-top: var(--s4); }
+  details.drawer > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: #ccc; }
+  details.drawer[open] > summary { margin-bottom: var(--s3); }
+
+  /* side: event details, logos, link */
+  .field + .field { margin-top: var(--s3); }
+  .field input { width: 100%; }
+  .logo-box { height: 150px; border-radius: 6px; background: repeating-conic-gradient(#2b2b2b 0 25%, #212121 0 50%) 0 0 / 18px 18px; display: flex; align-items: center; justify-content: center; padding: var(--s3); color: #bbb; font-size: 13px; text-align: center; }
+  .logo-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .btns { display: flex; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s3); }
+  .sponsors { list-style: none; margin: var(--s3) 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--s2); }
+  .sp { background: #1e1e1e; border-radius: 6px; padding: var(--s2); }
+  .sp .face { height: 64px; background: #fff; border-radius: 4px; display: flex; align-items: center; justify-content: center; padding: 6px; }
+  .sp .face img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .sp .tools { display: flex; justify-content: space-between; margin-top: var(--s2); }
+  #assetMeter { margin-top: var(--s3); }
+  .link-box { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s2); }
+  .link-name { font-size: 13px; font-weight: 600; color: #ddd; margin-top: var(--s3); }
+  .link-name .muted { font-weight: 400; margin-left: 6px; }
+  .diy { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s3); }
+  .link-box code { flex: 1 1 220px; min-width: 0; font-family: Consolas, monospace; font-size: 13px; background: #1a1a1a; padding: 6px 8px; border-radius: 6px; word-break: break-all; color: #ddd; }
+  .check { display: flex; align-items: center; gap: 6px; margin: var(--s3) 0 0; font-size: 13px; color: #ccc; }
+  .check input { accent-color: #1565c0; }
+  ol.steps { margin: var(--s3) 0 0; padding-left: 1.2em; font-size: 13px; color: #bbb; line-height: 1.6; }
+
+  #logBox { margin-top: var(--s5); }
+  #logBox summary { cursor: pointer; font-size: 13px; color: #aaa; }
+  #log { max-height: 180px; overflow-y: auto; font-size: 12px; color: #aaa; white-space: pre-wrap; margin: var(--s2) 0 0 0; }
+
+  @media (max-width: 1100px) {
+    .cd { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 600px) {
+    .top h1 { font-size: 12px; white-space: normal; }
+    #codeInput { width: 100%; }
+    .seg { grid-template-columns: 2em 76px minmax(0, 1fr); }
+    .seg .tag { grid-column: 2; grid-row: 2; }
+    .seg .now-btn { grid-column: 3; grid-row: 2; justify-self: start; }
+    .seg .tools { grid-column: 3; grid-row: 2; justify-self: end; }
+    .add-seg { grid-template-columns: 76px minmax(0, 1fr); }
+    .add-seg button { grid-column: 1 / -1; }
+    #cdTime { font-size: 44px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="topbar">
+      <div class="top-id">
+        <h1>Yo-Yo Event Management <span class="page-name">· Broadcast</span></h1>
+        <div id="eventHead" class="hidden"><span id="eventName"></span></div>
+      </div>
+      <nav class="pages hidden" id="pageNav" aria-label="Event pages">
+        <a id="navHome" href="/">All pages</a>
+        <a id="navScore">Judging</a>
+        <a id="navMusic">Music</a>
+        <a id="navBroadcast" aria-current="page">Broadcast</a>
+        <a id="navTimer" target="_blank" rel="noopener">Timer display</a>
+      </nav>
+      <div class="pills">
+        <span class="pill" id="connPill">Not connected</span>
+        <span class="pill" id="gfxPill">Graphics: —</span>
+      </div>
+    </div>
+    <div id="banners" role="alert"></div>
+  </header>
+
+  <div class="panel" id="connectPanel">
+    <h2>Enter the event code</h2>
+    <div class="row">
+      <div>
+        <label for="codeInput">Event code (the same one the judges use)</label>
+        <input type="text" id="codeInput" autocomplete="off" spellcheck="false" placeholder="WORD-WORD-WORD-00">
+      </div>
+      <button id="connectBtn">Connect</button>
+    </div>
+    <div id="connectMsg" role="alert"></div>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="layout">
+      <main class="main">
+        <section class="panel" aria-labelledby="sceneTitle">
+          <div class="scene-head">
+            <div class="scene-id"><h2 id="sceneTitle">Scene</h2><span class="air" id="airTag">Off air</span></div>
+            <div class="take">
+              <span class="sync" id="syncState" role="status"></span>
+              <button class="btn-green" id="takeBtn">Take Starting Soon to air</button>
+            </div>
+          </div>
+          <div class="canvas" id="canvas">
+            <iframe id="pvFrame" title="Preview of the graphics" tabindex="-1"></iframe>
+            <div class="ov" id="ov"><div class="guide v" id="guideV"></div><div class="guide h" id="guideH"></div></div>
+          </div>
+          <div class="scene-bar">
+            <div class="chips" id="chips" role="toolbar" aria-label="Pieces"></div>
+            <button class="btn-grey btn-small" id="resetLayout">Reset layout</button>
+          </div>
+          <p class="hint">Drag a piece to move it and its corner to resize. It snaps to the edges, the centre lines and the other pieces; hold Shift to place it freely. Arrow keys nudge the selected piece.</p>
+          <div class="insp" id="insp"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="cdTitle">
+          <div class="cd">
+          <div class="cd-ctl">
+            <div class="cd-read">
+              <div>
+                <h2 class="sec-title" id="cdTitle">Countdown</h2>
+                <div id="cdState">Not shown</div>
+              </div>
+              <div id="cdTime" class="idle" aria-live="off">--:--</div>
+            </div>
+            <div class="cd-set">
+              <div>
+                <label for="cdInput">Minutes (or m:ss)</label>
+                <input type="text" id="cdInput" inputmode="numeric" autocomplete="off" placeholder="10">
+              </div>
+              <button class="btn-grey" id="cdSetBtn">Set</button>
+              <button class="btn-green" id="cdRunBtn">Start</button>
+            </div>
+          </div>
+          <div class="cd-ctl">
+            <div class="cd-btns">
+              <button class="btn-grey btn-small" id="cdMinus">−1 min</button>
+              <button class="btn-grey btn-small" id="cdPlus">+1 min</button>
+              <button class="btn-grey btn-small" id="cdToNext" disabled>Count to next segment</button>
+              <button class="btn-grey btn-small" id="cdHide">Hide clock</button>
+            </div>
+            <div id="cdNote"></div>
+            <div class="field">
+              <label for="fLabel">Text above the clock</label>
+              <input type="text" id="fLabel" maxlength="40" placeholder="Show starts in">
+            </div>
+          </div>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="runTitle">
+          <div class="run-head">
+            <h2 id="runTitle">Run of show</h2>
+            <div class="run-tools">
+              <button id="advanceBtn" disabled>Next segment</button>
+              <button class="btn-grey btn-small" id="clearNowBtn" disabled>Nothing on now</button>
+            </div>
+          </div>
+          <ol class="run" id="runList"></ol>
+          <div class="empty hidden" id="runEmpty">No segments yet. Add the day’s segments below; the graphics show the one on now and the next three.</div>
+          <form class="add-seg" id="addSegForm">
+            <input type="text" class="time-in" id="newTime" maxlength="8" placeholder="11:15" aria-label="New segment time">
+            <input type="text" id="newTitle" maxlength="60" placeholder="Segment, e.g. 1A Pro prelims" aria-label="New segment name">
+            <button type="submit" class="btn-grey">Add segment</button>
+          </form>
+          <details class="drawer">
+            <summary>Type or paste several at once</summary>
+            <textarea id="pasteBox" placeholder="One segment per line, time first:&#10;11:00 Broadcast begins&#10;11:15 1A Pro prelims&#10;13:00 X-Division"></textarea>
+            <div class="btns">
+              <button class="btn-grey btn-small" id="pasteAdd">Add to the end</button>
+              <button class="btn-grey btn-small" id="pasteReplace">Replace the run of show</button>
+            </div>
+          </details>
+        </section>
+      </main>
+
+      <aside class="side">
+        <section class="panel" aria-labelledby="detailsTitle">
+          <h2 class="sec-title" id="detailsTitle">Words on the graphics</h2>
+          <div class="field" style="margin-top:var(--s3)">
+            <label for="fHeadline">Headline</label>
+            <input type="text" id="fHeadline" maxlength="40" placeholder="Starting soon">
+          </div>
+          <div class="field">
+            <label for="fTitle">Event name</label>
+            <input type="text" id="fTitle" maxlength="80">
+          </div>
+          <div class="field">
+            <label for="fPlace">Place (city or venue)</label>
+            <input type="text" id="fPlace" maxlength="80" placeholder="Minneapolis, MN">
+          </div>
+          <div class="field">
+            <label for="fDate">Date</label>
+            <input type="text" id="fDate" maxlength="40">
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="logoTitle">
+          <h2 class="sec-title" id="logoTitle">Client logo</h2>
+          <div class="logo-box" id="logoBox" style="margin-top:var(--s3)">No logo yet. The event name is shown in its place.</div>
+          <div class="btns">
+            <button class="btn-grey btn-small" id="logoPick">Choose logo</button>
+            <button class="btn-grey btn-small hidden" id="logoRm">Remove</button>
+          </div>
+          <p class="hint">A PNG or SVG with a transparent background works best; a white background shows as a white box over your background.</p>
+        </section>
+
+        <section class="panel" aria-labelledby="spTitle">
+          <h2 class="sec-title" id="spTitle">Sponsor logos</h2>
+          <ul class="sponsors" id="spList"></ul>
+          <div class="btns">
+            <button class="btn-grey btn-small" id="spPick">Add sponsor logos</button>
+          </div>
+          <p class="hint">Shown on the sponsor strip (white unless you change its colour), up to four at a time; more than four rotate every 10 seconds.</p>
+          <div class="muted" id="assetMeter"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="linkTitle">
+          <h2 class="sec-title" id="linkTitle">Links for OBS</h2>
+          <p class="hint">Every link is transparent: set up the background under it in OBS. For a slow endless scroll, add your image as an Image source and give it OBS’s Scroll filter.</p>
+          <div class="link-name">Full scene <span class="muted">Browser Source 1920 × 1080, laid out above</span></div>
+          <div class="link-box"><code id="gfxUrl"></code><button class="btn-small" id="copyGfx">Copy link</button></div>
+          <details class="drawer">
+            <summary>One source per piece (DIY)</summary>
+            <ul class="diy" id="diyList"></ul>
+            <p class="hint">Make each Browser Source the size shown, then place and scale it in OBS. Colours, font and show / hide still come from this page, and Take / Clear still switches them all.</p>
+          </details>
+        </section>
+
+        <section aria-labelledby="deviceTitle">
+          <h2 id="deviceTitle" class="sec-title">This device</h2>
+          <p class="hint">The run of show and logos are saved on this laptop. The server only keeps a copy in memory while the event runs.</p>
+          <div class="btns"><button class="btn-grey" id="disconnectBtn">Disconnect / change code</button></div>
+        </section>
+      </aside>
+    </div>
+
+    <details id="logBox">
+      <summary>Activity log (useful if something goes wrong)</summary>
+      <pre id="log"></pre>
+    </details>
+  </div>
+</div>
+
+<div id="toast" class="gone" role="status" aria-live="polite"></div>
+<input type="file" id="logoInput" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" class="hidden">
+<input type="file" id="spInput" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" multiple class="hidden">
+
+<script>
+(function () {
+  'use strict';
+
+  // ------------------------------------------------------------ helpers
+  function $(id) { return document.getElementById(id); }
+  function el(tag, props) {
+    var e = document.createElement(tag);
+    if (props) {
+      Object.keys(props).forEach(function (k) {
+        if (k === 'class') e.className = props[k];
+        else if (k === 'text') e.textContent = props[k];
+        else if (k.indexOf('on') === 0) e[k] = props[k];
+        else e.setAttribute(k, props[k]);
+      });
+    }
+    for (var i = 2; i < arguments.length; i++) {
+      var c = arguments[i];
+      if (c == null) continue;
+      e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    }
+    return e;
+  }
+  var ICONS = {
+    up: '<path d="M6 15l6-6 6 6"/>',
+    down: '<path d="M6 9l6 6 6-6"/>',
+    left: '<path d="M15 6l-6 6 6 6"/>',
+    right: '<path d="M9 6l6 6-6 6"/>',
+    x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  };
+  function icon(name) {
+    var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('viewBox', '0 0 24 24');
+    s.setAttribute('class', 'i');
+    s.setAttribute('aria-hidden', 'true');
+    s.innerHTML = ICONS[name];
+    return s;
+  }
+  function iconBtn(name, label, fn) {
+    var b = el('button', { class: 'btn-icon', type: 'button', title: label, 'aria-label': label, onclick: fn });
+    b.appendChild(icon(name));
+    return b;
+  }
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
+    remove: function (k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
+  };
+  function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
+  var logEl = $('log');
+  function log(msg) {
+    var line = new Date().toLocaleTimeString() + '  ' + msg;
+    logEl.textContent = (logEl.textContent ? logEl.textContent + '\n' : '') + line;
+    var lines = logEl.textContent.split('\n');
+    if (lines.length > 150) logEl.textContent = lines.slice(-150).join('\n');
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function clock(ms) {
+    var s = Math.ceil(Math.max(0, ms) / 1000);
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    var two = function (n) { return String(n).padStart(2, '0'); };
+    return h ? h + ':' + two(m) + ':' + two(ss) : two(m) + ':' + two(ss);
+  }
+
+  // Two-step confirm, same pattern as the scoring and music pages.
+  var arm = { key: null, btn: null, nodes: null, title: null, label: null, timer: null };
+  function restoreAttr(btn, name, v) { if (v == null) btn.removeAttribute(name); else btn.setAttribute(name, v); }
+  function disarm() {
+    if (!arm.key) return;
+    clearTimeout(arm.timer);
+    arm.btn.classList.remove('armed');
+    if (arm.nodes) { arm.btn.textContent = ''; arm.nodes.forEach(function (n) { arm.btn.appendChild(n); }); }
+    restoreAttr(arm.btn, 'title', arm.title);
+    restoreAttr(arm.btn, 'aria-label', arm.label);
+    arm.key = null; arm.btn = null; arm.nodes = null;
+  }
+  function confirmClick(key, btn, armedText, fn) {
+    if (arm.key === key) { disarm(); fn(); return; }
+    disarm();
+    arm.key = key; arm.btn = btn; arm.nodes = null;
+    arm.title = btn.getAttribute('title'); arm.label = btn.getAttribute('aria-label');
+    btn.classList.add('armed');
+    if (btn.classList.contains('btn-icon')) { btn.title = armedText; btn.setAttribute('aria-label', armedText); }
+    else { arm.nodes = Array.from(btn.childNodes); btn.textContent = armedText; }
+    arm.timer = setTimeout(disarm, 3000);
+  }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') disarm(); });
+
+  // ------------------------------------------------------------ state (saved on this laptop, per event)
+  // countdown: { running, remainingMs, at } with at = this laptop's clock when remainingMs was read.
+  var state = null, assets = null, evt = null;
+  var myId = store.get('yoyo.bcast.client') || uid() + uid();
+  store.set('yoyo.bcast.client', myId);
+  function blank() {
+    return { scene: 'off', headline: '', title: '', place: '', date: '', label: '', run: [], nowIdx: -1, countdown: null, layout: {}, edited: false };
+  }
+  function stateKey() { return 'yoyo.bcast.state.' + (evt ? evt.id : 'none'); }
+  function assetKey() { return 'yoyo.bcast.assets.' + (evt ? evt.id : 'none'); }
+  function loadState() {
+    try { state = JSON.parse(store.get(stateKey()) || 'null'); } catch (e) { state = null; }
+    if (!state || !Array.isArray(state.run)) state = blank();
+    if (!state.layout || typeof state.layout !== 'object') state.layout = {};
+    try { assets = JSON.parse(store.get(assetKey()) || 'null'); } catch (e) { assets = null; }
+    if (!assets || !Array.isArray(assets.sponsors)) assets = { logo: null, sponsors: [], sig: '' };
+    if (!state.title && !state.edited && evt) state.title = evt.name;
+    if (!state.date) state.date = new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  function saveState() { store.set(stateKey(), JSON.stringify(state)); }
+  function saveAssets() {
+    if (!store.set(assetKey(), JSON.stringify(assets))) notice('warn', 'These logos could not be saved on this laptop (browser storage is full). They are on the graphics, but pick them again after a reload.');
+  }
+
+  function cdMs(c, now) {
+    if (!c) return null;
+    return Math.max(0, c.remainingMs - (c.running ? Math.max(0, (now || Date.now()) - c.at) : 0));
+  }
+  function wire() {
+    var c = state.countdown;
+    return {
+      scene: state.scene, headline: state.headline, layout: state.layout, title: state.title, place: state.place, date: state.date, label: state.label,
+      run: state.run.map(function (r) { return { id: r.id, time: r.time, title: r.title }; }),
+      nowIdx: state.nowIdx,
+      countdown: c ? { running: c.running, remainingMs: cdMs(c) } : null,
+    };
+  }
+  // What the server has must match this (the countdown compares by its running state only; it ticks).
+  function sig(b) {
+    if (!b) return '';
+    var c = b.countdown;
+    return JSON.stringify([b.scene, b.headline || '', JSON.stringify(normLayout(b.layout)), b.title, b.place, b.date, b.label, (b.run || []).map(function (r) { return [r.id, r.time, r.title]; }), b.nowIdx, c ? c.running : null]);
+  }
+  var serverB = null, serverAssetSig = null;
+  function pending() { return sig(wire()) !== sig(serverB); }
+  function assetsPending() {
+    // nothing to send when neither this laptop nor the server has any logos (e.g. right after a restart)
+    if (!assets.logo && !assets.sponsors.length && !serverAssetSig) return false;
+    return (assets.sig || '') !== (serverAssetSig || '');
+  }
+
+  function changed() {
+    state.edited = true;
+    saveState();
+    sendBcast();
+    renderAll();
+    pushPreview();
+  }
+  function sendBcast() {
+    if (!isHealthy()) return;
+    ws.send(JSON.stringify({ type: 'bcast', b: wire() }));
+  }
+  function assetPayload() {
+    return { logo: assets.logo, sponsors: assets.sponsors.map(function (s) { return s.src; }), sig: assets.sig };
+  }
+  function sendAssets() {
+    if (!isHealthy()) return;
+    ws.send(JSON.stringify({ type: 'assets', assets: assetPayload() }));
+  }
+  function assetsChanged() {
+    assets.sig = uid();
+    saveAssets();
+    sendAssets();
+    renderAssets();
+  }
+
+  // ------------------------------------------------------------ images: trimmed, scaled and compressed here
+  var BUDGET = { total: 950 * 1024, logo: 560 * 1024, sponsor: 180 * 1024 };
+  function assetChars() {
+    return (assets.logo ? assets.logo.length : 0) + assets.sponsors.reduce(function (n, s) { return n + s.src.length; }, 0);
+  }
+  function loadImage(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () { resolve({ img: img, url: url }); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('unreadable')); };
+      img.src = url;
+    });
+  }
+  function prepImage(file, maxW, maxH, budget) {
+    return loadImage(file).then(function (r) {
+      var img = r.img;
+      var w = img.naturalWidth || 1200, h = img.naturalHeight || 600;
+      // Draw big, trim transparent edges so the logo sits on its own bounds, then fit the box.
+      var scale0 = Math.min(1, 2400 / Math.max(w, h));
+      if (/svg/.test(file.type)) scale0 = Math.min(2400 / w, 2400 / h);
+      var cw = Math.max(1, Math.round(w * scale0)), ch = Math.max(1, Math.round(h * scale0));
+      var c = document.createElement('canvas'); c.width = cw; c.height = ch;
+      var g = c.getContext('2d');
+      g.drawImage(img, 0, 0, cw, ch);
+      URL.revokeObjectURL(r.url);
+      var box = { x: 0, y: 0, w: cw, h: ch };
+      try {
+        var d = g.getImageData(0, 0, cw, ch).data, minX = cw, minY = ch, maxX = -1, maxY = -1;
+        for (var y = 0; y < ch; y++) {
+          for (var x = 0; x < cw; x++) {
+            if (d[(y * cw + x) * 4 + 3] > 10) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+          }
+        }
+        if (maxX >= 0) box = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+      } catch (e) { /* keep the full image */ }
+      var fitScale = Math.min(1, maxW / box.w, maxH / box.h);
+      var out, tries = 0;
+      do {
+        var ow = Math.max(1, Math.round(box.w * fitScale)), oh = Math.max(1, Math.round(box.h * fitScale));
+        var o = document.createElement('canvas'); o.width = ow; o.height = oh;
+        var og = o.getContext('2d');
+        og.imageSmoothingQuality = 'high';
+        og.drawImage(c, box.x, box.y, box.w, box.h, 0, 0, ow, oh);
+        out = o.toDataURL('image/webp', 0.9);
+        if (out.indexOf('data:image/webp') !== 0) out = o.toDataURL('image/png');
+        fitScale *= 0.8;
+      } while (out.length > budget && ++tries < 8);
+      if (out.length > budget) throw new Error('too large');
+      return out;
+    });
+  }
+
+  $('logoPick').onclick = function () { $('logoInput').value = ''; $('logoInput').click(); };
+  $('logoInput').addEventListener('change', function () {
+    var f = this.files && this.files[0];
+    if (!f) return;
+    prepImage(f, 1400, 1000, BUDGET.logo).then(function (src) {
+      var before = assets.logo;
+      assets.logo = src;
+      if (assetChars() > BUDGET.total) { assets.logo = before; notice('warn', 'That logo doesn’t fit with the sponsor logos (the graphics take about 950 KB of logos). Remove a sponsor logo first.'); return; }
+      assetsChanged();
+      log('Logo set: ' + f.name + ' (' + Math.round(src.length / 1024) + ' KB).');
+    }).catch(function () { notice('warn', '“' + f.name + '” could not be read as an image. Use a PNG, JPG, WebP or SVG file.'); });
+  });
+  $('logoRm').onclick = function () {
+    confirmClick('logoRm', this, 'Click again to remove', function () { assets.logo = null; assetsChanged(); log('Logo removed.'); });
+  };
+  $('spPick').onclick = function () { $('spInput').value = ''; $('spInput').click(); };
+  $('spInput').addEventListener('change', function () {
+    var files = Array.prototype.slice.call(this.files || []);
+    if (!files.length) return;
+    var room = 12 - assets.sponsors.length;
+    if (room <= 0) { notice('warn', 'The graphics take up to 12 sponsor logos. Remove one first.'); return; }
+    if (files.length > room) notice('warn', 'Only the first ' + room + ' were added: the graphics take up to 12 sponsor logos.');
+    files = files.slice(0, room);
+    var added = 0, skipped = [];
+    files.reduce(function (p, f) {
+      return p.then(function () {
+        return prepImage(f, 600, 240, BUDGET.sponsor).then(function (src) {
+          if (assetChars() + src.length > BUDGET.total) { skipped.push(f.name); return; }
+          assets.sponsors.push({ id: uid(), name: f.name, src: src });
+          added++;
+        }).catch(function () { skipped.push(f.name); });
+      });
+    }, Promise.resolve()).then(function () {
+      if (added) { assetsChanged(); log('Added ' + added + ' sponsor logo' + (added === 1 ? '' : 's') + '.'); }
+      if (skipped.length) notice('warn', 'Not added: ' + skipped.join(', ') + '. Each must be an image, and all logos together must fit in about 950 KB.');
+    });
+  });
+
+  // ------------------------------------------------------------ rendering
+  function renderAll() {
+    if (!state) return;
+    renderAir();
+    renderClock();
+    renderRun();
+    renderFields();
+    renderAssets();
+    renderScene();
+  }
+
+  function renderAir() {
+    var on = state.scene === 'starting';
+    var air = $('airTag');
+    air.textContent = on ? 'On air' : 'Off air';
+    air.className = 'air' + (on ? ' live' : '');
+    var t = $('takeBtn');
+    t.textContent = on ? 'Clear graphics' : 'Take Starting Soon to air';
+    t.className = on ? 'btn-red' : 'btn-green';
+    var s = $('syncState');
+    var p = pending() || assetsPending();
+    s.className = 'sync' + (p ? ' pending' : '');
+    s.textContent = !connected && !wantConnected ? '' : p ? (isHealthy() ? 'Sending…' : 'Offline: changes go to the graphics when the connection returns') : 'Graphics up to date';
+  }
+
+  function renderClock() {
+    var c = state.countdown, ms = cdMs(c);
+    var t = $('cdTime');
+    t.textContent = ms === null ? '--:--' : clock(ms);
+    t.className = ms === null ? 'idle' : ms <= 0 ? 'zero' : '';
+    $('cdState').textContent = ms === null ? 'Not shown' : ms <= 0 ? 'At zero: the graphics say “Any moment now”' : c.running ? 'Running' : 'Paused';
+    var run = $('cdRunBtn');
+    run.textContent = c && c.running && ms > 0 ? 'Pause' : 'Start';
+    run.className = c && c.running && ms > 0 ? 'btn-grey' : 'btn-green';
+    $('cdMinus').disabled = !c; $('cdPlus').disabled = !c; $('cdHide').disabled = !c;
+    var nx = nextTimed();
+    var b = $('cdToNext');
+    b.disabled = !nx;
+    b.textContent = nx ? 'Count to ' + nx.time + ' (' + (nx.title || 'next segment') + ')' : 'Count to next segment';
+  }
+  setInterval(function () { if (state && document.visibilityState === 'visible') { renderClock(); } }, 250);
+
+  function renderFields() {
+    [['fHeadline', 'headline'], ['fTitle', 'title'], ['fPlace', 'place'], ['fDate', 'date'], ['fLabel', 'label']].forEach(function (p) {
+      var inp = $(p[0]);
+      if (document.activeElement !== inp) inp.value = state[p[1]] || '';
+    });
+    $('fTitle').placeholder = evt ? evt.name : '';
+  }
+
+  // ------------------------------------------------------------ run of show
+  function segState(i) {
+    if (state.nowIdx < 0) return i === 0 ? 'next' : '';
+    if (i < state.nowIdx) return 'done';
+    if (i === state.nowIdx) return 'now';
+    return i === state.nowIdx + 1 ? 'next' : '';
+  }
+  var TAG_TEXT = { done: 'Done', now: 'On now', next: 'Next' };
+  function renderRun() {
+    var list = $('runList');
+    var focusId = document.activeElement && document.activeElement.getAttribute('data-seg');
+    var focusField = document.activeElement && document.activeElement.getAttribute('data-field');
+    list.textContent = '';
+    $('runEmpty').classList.toggle('hidden', state.run.length > 0);
+    state.run.forEach(function (r, i) {
+      var st = segState(i);
+      var li = el('li', { class: 'seg' + (st ? ' is-' + st : '') });
+      var time = el('input', { type: 'text', class: 'time-in', maxlength: '8', value: r.time || '', 'aria-label': 'Time of segment ' + (i + 1), 'data-seg': r.id, 'data-field': 'time' });
+      var title = el('input', { type: 'text', maxlength: '60', value: r.title || '', 'aria-label': 'Name of segment ' + (i + 1), 'data-seg': r.id, 'data-field': 'title' });
+      time.addEventListener('change', function () { r.time = this.value.trim(); changed(); });
+      title.addEventListener('change', function () { r.title = this.value.trim(); changed(); });
+      var tag = st ? el('span', { class: 'tag ' + st, text: TAG_TEXT[st] }) : el('span');
+      var nowBtn = st === 'now' ? el('span') : el('button', { class: 'btn-small btn-grey now-btn', type: 'button', text: 'On now',
+        'aria-label': 'Mark ' + (r.title || 'segment ' + (i + 1)) + ' as on now', onclick: function () { setNow(i); } });
+      var tools = el('div', { class: 'tools' },
+        iconBtn('up', 'Move up', function () { move(i, -1); }),
+        iconBtn('down', 'Move down', function () { move(i, 1); }));
+      var rm = iconBtn('x', 'Remove ' + (r.title || 'segment ' + (i + 1)), function () {
+        confirmClick('rm-' + r.id, rm, 'Click again to remove', function () { removeSeg(i); });
+      });
+      tools.appendChild(rm);
+      tools.firstChild.disabled = i === 0;
+      tools.children[1].disabled = i === state.run.length - 1;
+      li.appendChild(el('span', { class: 'num', text: String(i + 1) }));
+      li.appendChild(time); li.appendChild(title); li.appendChild(tag); li.appendChild(nowBtn); li.appendChild(tools);
+      list.appendChild(li);
+    });
+    if (focusId) {
+      var again = list.querySelector('[data-seg="' + focusId + '"][data-field="' + focusField + '"]');
+      if (again) again.focus();
+    }
+    var adv = $('advanceBtn');
+    var nextIdx = state.nowIdx + 1;
+    adv.disabled = nextIdx >= state.run.length;
+    adv.textContent = nextIdx < state.run.length ? 'Next segment: ' + (state.run[nextIdx].title || 'segment ' + (nextIdx + 1)) : 'Next segment';
+    $('clearNowBtn').disabled = state.nowIdx < 0;
+  }
+  function setNow(i) { state.nowIdx = i; changed(); log('On now: ' + (state.run[i].title || 'segment ' + (i + 1)) + '.'); }
+  function move(i, d) {
+    var j = i + d;
+    if (j < 0 || j >= state.run.length) return;
+    var nowId = state.nowIdx >= 0 ? state.run[state.nowIdx].id : null;
+    var t = state.run[i]; state.run[i] = state.run[j]; state.run[j] = t;
+    if (nowId) state.nowIdx = state.run.findIndex(function (r) { return r.id === nowId; });
+    changed();
+  }
+  function removeSeg(i) {
+    var nowId = state.nowIdx >= 0 ? state.run[state.nowIdx].id : null;
+    state.run.splice(i, 1);
+    state.nowIdx = nowId ? state.run.findIndex(function (r) { return r.id === nowId; }) : -1;
+    changed();
+  }
+  // "11:15 1A Pro prelims", "11.15 - Finals", or just "Finals"
+  function parseLine(line) {
+    var m = line.match(/^\s*(\d{1,2}[:.]\d{2}(?:\s*[ap]\.?m\.?)?)\s*[-–—:|]?\s*(.*)$/i);
+    if (m) return { time: m[1].replace('.', ':').replace(/\s+/g, ' ').toUpperCase(), title: m[2].trim() };
+    return { time: '', title: line.trim() };
+  }
+  $('addSegForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var time = $('newTime').value.trim(), title = $('newTitle').value.trim();
+    if (!time && !title) { $('newTitle').focus(); return; }
+    state.run.push({ id: uid(), time: time, title: title.slice(0, 60) });
+    $('newTime').value = ''; $('newTitle').value = '';
+    changed();
+    $('newTime').focus();
+  });
+  function pasted() {
+    return $('pasteBox').value.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean).map(parseLine)
+      .map(function (p) { return { id: uid(), time: p.time.slice(0, 8), title: p.title.slice(0, 60) }; });
+  }
+  $('pasteAdd').onclick = function () {
+    var rows = pasted();
+    if (!rows.length) { notice('info', 'Type one segment per line first, time first: “11:15 1A Pro prelims”.'); return; }
+    state.run = state.run.concat(rows).slice(0, 40);
+    $('pasteBox').value = '';
+    changed();
+    notice('info', 'Added ' + rows.length + ' segment' + (rows.length === 1 ? '' : 's') + '.');
+  };
+  $('pasteReplace').onclick = function () {
+    var rows = pasted();
+    if (!rows.length) { notice('info', 'Type one segment per line first, time first: “11:15 1A Pro prelims”.'); return; }
+    var btn = this;
+    confirmClick('replace', btn, 'Click again to replace all ' + state.run.length, function () {
+      state.run = rows.slice(0, 40); state.nowIdx = -1;
+      $('pasteBox').value = '';
+      changed();
+      notice('info', 'The run of show now has ' + state.run.length + ' segments.');
+    });
+  };
+  $('advanceBtn').onclick = function () { if (state.nowIdx + 1 < state.run.length) setNow(state.nowIdx + 1); };
+  $('clearNowBtn').onclick = function () { state.nowIdx = -1; changed(); };
+
+  // ------------------------------------------------------------ countdown
+  function parseDuration(s) {
+    s = String(s || '').trim();
+    var m = s.match(/^(\d{1,3})(?:[:.](\d{1,2}))?$/);
+    if (!m) return null;
+    var sec = Number(m[1]) * 60 + (m[2] ? Number(m[2]) : 0);
+    return sec > 0 && sec <= 24 * 3600 ? sec * 1000 : null;
+  }
+  // The next segment with a time (after the one on now), as a time today on this laptop's clock.
+  function nextTimed() {
+    for (var i = state.nowIdx + 1; i < state.run.length; i++) {
+      var r = state.run[i];
+      var m = (r.time || '').match(/^(\d{1,2}):(\d{2})(?:\s*([AP])\.?M\.?)?$/i);
+      if (!m) continue;
+      var h = Number(m[1]), mi = Number(m[2]);
+      if (m[3]) { h = h % 12 + (m[3].toUpperCase() === 'P' ? 12 : 0); }
+      if (h > 23 || mi > 59) continue;
+      var d = new Date(); d.setHours(h, mi, 0, 0);
+      var ms = d.getTime() - Date.now();
+      if (ms > 0) return { time: r.time, title: r.title, ms: ms };
+    }
+    return null;
+  }
+  function cdNote(text, bad) { var n = $('cdNote'); n.textContent = text || ''; n.className = bad ? 'bad' : ''; }
+  function setCountdown(ms, running) {
+    state.countdown = { running: running, remainingMs: ms, at: Date.now() };
+    changed();
+  }
+  $('cdSetBtn').onclick = function () {
+    var ms = parseDuration($('cdInput').value);
+    if (ms === null) { cdNote('Type minutes, like 10, or minutes and seconds, like 9:30.', true); $('cdInput').focus(); return; }
+    cdNote('');
+    setCountdown(ms, !!(state.countdown && state.countdown.running));
+  };
+  $('cdInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('cdSetBtn').click(); });
+  $('cdRunBtn').onclick = function () {
+    var c = state.countdown, ms = cdMs(c);
+    if (c && c.running && ms > 0) { setCountdown(ms, false); return; }
+    if (!c || ms <= 0) {
+      var typed = parseDuration($('cdInput').value);
+      if (typed === null) { cdNote('Type how long the countdown runs, then press Start.', true); $('cdInput').focus(); return; }
+      ms = typed;
+    }
+    cdNote('');
+    setCountdown(ms, true);
+  };
+  $('cdPlus').onclick = function () { var c = state.countdown; if (c) setCountdown(cdMs(c) + 60000, c.running); };
+  $('cdMinus').onclick = function () { var c = state.countdown; if (c) setCountdown(Math.max(0, cdMs(c) - 60000), c.running); };
+  $('cdToNext').onclick = function () {
+    var nx = nextTimed();
+    if (!nx) return;
+    cdNote('Counting to ' + nx.time + ' on this laptop’s clock.');
+    setCountdown(nx.ms, true);
+  };
+  $('cdHide').onclick = function () { state.countdown = null; cdNote(''); changed(); };
+
+  // ------------------------------------------------------------ fields, take, link
+  [['fHeadline', 'headline'], ['fTitle', 'title'], ['fPlace', 'place'], ['fDate', 'date'], ['fLabel', 'label']].forEach(function (p) {
+    $(p[0]).addEventListener('change', function () { state[p[1]] = this.value.trim(); changed(); });
+    $(p[0]).addEventListener('keydown', function (e) { if (e.key === 'Enter') this.blur(); });
+  });
+  $('takeBtn').onclick = function () {
+    state.scene = state.scene === 'starting' ? 'off' : 'starting';
+    log(state.scene === 'starting' ? 'Took Starting Soon to air.' : 'Cleared the graphics.');
+    changed();
+  };
+
+  function renderAssets() {
+    var box = $('logoBox');
+    box.textContent = '';
+    if (assets.logo) box.appendChild(el('img', { src: assets.logo, alt: 'Client logo' }));
+    else box.textContent = 'No logo yet. The event name is shown in its place.';
+    $('logoRm').classList.toggle('hidden', !assets.logo);
+    $('logoPick').textContent = assets.logo ? 'Replace logo' : 'Choose logo';
+    var ul = $('spList');
+    ul.textContent = '';
+    assets.sponsors.forEach(function (s, i) {
+      var rm = iconBtn('x', 'Remove ' + s.name, function () {
+        confirmClick('sp-' + s.id, rm, 'Click again to remove', function () { assets.sponsors.splice(i, 1); assetsChanged(); });
+      });
+      var left = iconBtn('left', 'Move ' + s.name + ' earlier', function () { swapSp(i, -1); });
+      var right = iconBtn('right', 'Move ' + s.name + ' later', function () { swapSp(i, 1); });
+      left.disabled = i === 0; right.disabled = i === assets.sponsors.length - 1;
+      ul.appendChild(el('li', { class: 'sp' },
+        el('div', { class: 'face' }, el('img', { src: s.src, alt: s.name })),
+        el('div', { class: 'tools' }, el('span', {}, left, right), rm)));
+    });
+    var kb = Math.round(assetChars() / 1024);
+    $('assetMeter').textContent = assets.sponsors.length + ' of 12 sponsor logos · all logos ' + kb + ' KB of about 950 KB';
+    renderAir();
+    pushPreview();
+  }
+  function swapSp(i, d) {
+    var j = i + d, a = assets.sponsors;
+    if (j < 0 || j >= a.length) return;
+    var t = a[i]; a[i] = a[j]; a[j] = t;
+    assetsChanged();
+  }
+
+  function gfxLink(piece) {
+    if (!evt || !evt.viewKey) return '';
+    return location.origin + '/gfx/' + encodeURIComponent(evt.viewKey) + (piece ? '?piece=' + piece : '');
+  }
+  function copyText(text, btn, codeEl) {
+    var label = btn.textContent;
+    var done = function (msg) { btn.textContent = msg; setTimeout(function () { btn.textContent = label; }, 1500); };
+    var sel = function () { var rg = document.createRange(); rg.selectNodeContents(codeEl); var w = window.getSelection(); w.removeAllRanges(); w.addRange(rg); done('Press Ctrl+C'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { done('Copied'); }, sel);
+    else sel();
+  }
+  function renderLink() {
+    $('gfxUrl').textContent = gfxLink();
+    var ul = $('diyList');
+    ul.textContent = '';
+    ORDER.forEach(function (k) {
+      var info = PIECE_INFO[k], code = el('code', { text: gfxLink(k) });
+      var btn = el('button', { class: 'btn-small btn-grey', type: 'button', text: 'Copy', 'aria-label': 'Copy the ' + info.label + ' link' });
+      btn.onclick = function () { copyText(gfxLink(k), btn, code); };
+      ul.appendChild(el('li', null,
+        el('div', { class: 'link-name' }, info.label, el('span', { class: 'muted', text: 'Browser Source ' + info.w + ' × ' + info.h })),
+        el('div', { class: 'diy-line' }, code, btn)));
+    });
+    var src = evt && evt.viewKey ? '/gfx/' + encodeURIComponent(evt.viewKey) + '?preview=1' : 'about:blank';
+    if ($('pvFrame').getAttribute('src') !== src) $('pvFrame').setAttribute('src', src);
+  }
+  $('copyGfx').onclick = function () { copyText(gfxLink(), this, $('gfxUrl')); };
+  $('pvFrame').addEventListener('load', function () { pushPreview(); });
+
+  // ------------------------------------------------------------ scene layout editor
+  // Native sizes and default places match gfx.html; the layout stores each piece's place on the 1920x1080 scene.
+  var PIECE_INFO = {
+    logo:      { label: 'Logo',        w: 700,  h: 520, x: 110,  y: 210, colors: ['panel', 'accent', 'text'], plate: 'Panel behind the event name (when there is no logo)' },
+    headline:  { label: 'Headline',    w: 920,  h: 300, x: 1000, y: 100, colors: ['panel', 'text'], plate: 'Panel behind the words' },
+    countdown: { label: 'Countdown',   w: 894,  h: 270, x: 960,  y: 380, colors: ['panel', 'accent', 'text'] },
+    runofshow: { label: 'Run of show', w: 820,  h: 246, x: 1020, y: 654, colors: ['panel', 'accent', 'text'] },
+    eventbar:  { label: 'Event bar',   w: 1144, h: 104, x: -72,  y: 940, colors: ['panel', 'accent', 'text'] },
+    sponsors:  { label: 'Sponsors',    w: 924,  h: 104, x: 1068, y: 940, colors: ['panel'] },
+  };
+  var ORDER = ['logo', 'headline', 'countdown', 'runofshow', 'eventbar', 'sponsors'];
+  var FONT_LIST = ['Saira', 'Barlow Condensed', 'Roboto Condensed', 'Oswald', 'Teko', 'Rajdhani', 'Chakra Petch', 'Exo 2', 'Anton', 'Bebas Neue', 'Russo One'];
+  var COLOR_DEFAULT = { panel: '#0c1a45', accent: '#f2c230', text: '#ffffff' };
+  var COLOR_LABEL = { panel: 'Panel', accent: 'Accent', text: 'Text' };
+  function colorDefault(k, c) { return k === 'sponsors' && c === 'panel' ? '#ffffff' : COLOR_DEFAULT[c]; }
+
+  function cfgOf(k, layout) {
+    var c = (layout || {})[k] || {}, d = PIECE_INFO[k], col = c.colors || {};
+    return {
+      x: Number.isFinite(c.x) ? c.x : d.x, y: Number.isFinite(c.y) ? c.y : d.y,
+      scale: Number.isFinite(c.scale) ? c.scale : 1, show: c.show !== false, font: c.font || '',
+      colors: { panel: col.panel || '', accent: col.accent || '', text: col.text || '' },
+      z: Number.isFinite(c.z) ? c.z : 0, plate: c.plate !== false,
+    };
+  }
+  function normLayout(l) { var out = {}; ORDER.forEach(function (k) { out[k] = cfgOf(k, l); }); return out; }
+  var drag = null, selected = null;
+  function cfg(k) { return drag && drag.k === k ? drag.cur : cfgOf(k, state.layout); }
+  function setCfg(k, c) { state.layout = normLayout(state.layout); state.layout[k] = c; changed(); }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+  // the preview frame renders this laptop's copy straight away (also offline)
+  function pushPreview() {
+    var w;
+    try { w = $('pvFrame').contentWindow && $('pvFrame').contentWindow.gfx; } catch (e) { w = null; }
+    if (!w || !state) return;
+    var b = wire();
+    if (drag) { b.layout = normLayout(state.layout); b.layout[drag.k] = drag.cur; }
+    if (b.countdown) b.countdown.at = Date.now();
+    w.setLocal(b, assetPayload());
+  }
+
+  var boxes = {};
+  function scaleK() { return $('ov').clientWidth / 1920; }
+  function renderScene() {
+    var ov = $('ov'), k = scaleK();
+    ov.classList.toggle('narrow', ov.clientWidth < 700);
+    ORDER.forEach(function (p) {
+      var b = boxes[p];
+      if (!b) {
+        b = el('div', { class: 'box', tabindex: '0', role: 'button', 'data-k': p },
+          el('span', { class: 'box-name', text: PIECE_INFO[p].label }), el('span', { class: 'grip', 'aria-hidden': 'true' }));
+        b.addEventListener('keydown', onBoxKey);
+        b.addEventListener('focus', function () { if (selected !== p) select(p); });
+        boxes[p] = b;
+        ov.appendChild(b);
+      }
+      var c = cfg(p), info = PIECE_INFO[p];
+      b.style.left = (c.x * k) + 'px';
+      b.style.top = (c.y * k) + 'px';
+      b.style.width = (info.w * c.scale * k) + 'px';
+      b.style.height = (info.h * c.scale * k) + 'px';
+      b.classList.toggle('sel', selected === p);
+      b.style.zIndex = String(100 + c.z);
+      b.classList.toggle('off', !c.show);
+      b.setAttribute('aria-label', info.label + (c.show ? '' : ' (hidden)') + ': drag to move, arrow keys to nudge');
+      b.querySelector('.box-name').textContent = info.label + (c.show ? '' : ' · hidden');
+      // the name tag sits above the box, or inside it when the box is at the top of the canvas
+      b.querySelector('.box-name').style.left = Math.max(0, -c.x * k) + 'px';
+      b.querySelector('.box-name').style.top = c.y * k < 20 ? Math.max(0, -c.y * k) + 'px' : '-19px';
+    });
+    renderChips();
+    renderInspector();
+  }
+  function renderChips() {
+    var wrap = $('chips');
+    wrap.textContent = '';
+    ORDER.forEach(function (p) {
+      var c = cfg(p);
+      var btn = el('button', { class: 'chip', type: 'button', 'aria-pressed': selected === p ? 'true' : 'false', onclick: function () { select(selected === p ? null : p); } },
+        PIECE_INFO[p].label, c.show ? null : el('span', { class: 'st', text: ' · hidden' }));
+      wrap.appendChild(btn);
+    });
+  }
+  function select(p) { selected = p; renderScene(); }
+
+  var inspFor = null;
+  function renderInspector() {
+    var box = $('insp');
+    if (!selected) { box.classList.add('hidden'); inspFor = null; return; }
+    box.classList.remove('hidden');
+    var c = cfg(selected), info = PIECE_INFO[selected], p = selected;
+    // keep typing undisturbed: only rebuild when the piece changes, otherwise refresh the values
+    if (inspFor !== p || !box.contains(document.activeElement)) {
+      inspFor = p;
+      box.textContent = '';
+      var show = el('input', { type: 'checkbox', id: 'iShow' });
+      show.addEventListener('change', function () { var n = clone(cfg(p)); n.show = this.checked; setCfg(p, n); });
+      box.appendChild(el('div', { class: 'insp-head' }, el('h3', { text: info.label }),
+        el('label', { class: 'check', for: 'iShow' }, show, ' Show on the scene')));
+      var num = function (id, label, get, put) {
+        var inp = el('input', { type: 'number', id: id, step: '1' });
+        inp.addEventListener('change', function () { var v = Number(this.value); if (!Number.isFinite(v)) return; var n = clone(cfg(p)); put(n, v); setCfg(p, n); });
+        return el('div', null, el('label', { for: id, text: label }), inp);
+      };
+      var font = el('select', { id: 'iFont' });
+      FONT_LIST.forEach(function (fn) { font.appendChild(el('option', { value: fn === 'Saira' ? '' : fn, text: fn === 'Saira' ? 'Saira (default)' : fn })); });
+      font.addEventListener('change', function () { var n = clone(cfg(p)); n.font = this.value; setCfg(p, n); });
+      box.appendChild(el('div', { class: 'insp-row' },
+        num('iX', 'Left (px)', null, function (n, v) { n.x = Math.round(v); }),
+        num('iY', 'Top (px)', null, function (n, v) { n.y = Math.round(v); }),
+        num('iS', 'Size (%)', null, function (n, v) { n.scale = Math.max(.2, Math.min(3, v / 100)); }),
+        el('div', null, el('label', { for: 'iFont', text: 'Font' }), font)));
+      var colors = el('div', { class: 'insp-row' });
+      info.colors.forEach(function (key) {
+        var id = 'iC-' + key;
+        var inp = el('input', { type: 'color', id: id });
+        inp.addEventListener('input', function () { var n = clone(cfg(p)); n.colors[key] = this.value; setCfg(p, n); });
+        var def = el('button', { class: 'btn-grey btn-small', type: 'button', text: 'Default', 'data-c': key, 'aria-label': COLOR_LABEL[key] + ' colour back to default' });
+        def.onclick = function () { var n = clone(cfg(p)); n.colors[key] = ''; setCfg(p, n); };
+        colors.appendChild(el('div', { class: 'color-field' }, el('label', { for: id, text: COLOR_LABEL[key] }), inp, def));
+      });
+      box.appendChild(colors);
+      if (info.plate) {
+        var plate = el('input', { type: 'checkbox', id: 'iPlate' });
+        plate.addEventListener('change', function () { var n = clone(cfg(p)); n.plate = this.checked; setCfg(p, n); });
+        box.appendChild(el('label', { class: 'check', for: 'iPlate' }, plate, ' ' + info.plate));
+      }
+      // layer order, for pieces that overlap
+      var zs = function () { return ORDER.map(function (o) { return cfg(o).z; }); };
+      var front = el('button', { class: 'btn-grey btn-small', type: 'button', text: 'Bring to front' });
+      front.onclick = function () { var n = clone(cfg(p)); n.z = Math.min(20, Math.max.apply(null, zs()) + 1); setCfg(p, n); };
+      var back = el('button', { class: 'btn-grey btn-small', type: 'button', text: 'Send to back' });
+      back.onclick = function () { var n = clone(cfg(p)); n.z = Math.max(-20, Math.min.apply(null, zs()) - 1); setCfg(p, n); };
+      var reset = el('button', { class: 'btn-grey btn-small', type: 'button', text: 'Reset this piece' });
+      reset.onclick = function () { confirmClick('resetPiece', reset, 'Click again to reset', function () { var l = normLayout(state.layout); delete l[p]; state.layout = l; changed(); }); };
+      var code = el('code', { text: gfxLink(p) });
+      var copy = el('button', { class: 'btn-small btn-grey', type: 'button', text: 'Copy link' });
+      copy.onclick = function () { copyText(gfxLink(p), copy, code); };
+      box.appendChild(el('div', { class: 'diy-line' }, 'As its own source (' + info.w + ' × ' + info.h + '):', code, copy));
+      box.appendChild(el('div', { class: 'btns' }, front, back, reset));
+    }
+    var set = function (id, v) { var e = $(id); if (e && document.activeElement !== e) e.value = v; };
+    $('iShow').checked = c.show;
+    if ($('iPlate')) $('iPlate').checked = c.plate;
+    set('iX', Math.round(c.x)); set('iY', Math.round(c.y)); set('iS', Math.round(c.scale * 100));
+    set('iFont', c.font || '');
+    info.colors.forEach(function (key) {
+      set('iC-' + key, c.colors[key] || colorDefault(p, key));
+      var d = box.querySelector('button[data-c="' + key + '"]');
+      if (d) d.disabled = !c.colors[key];
+    });
+  }
+
+  // snapping: the moving box's edges and centre to the scene's edges and centre lines and the other pieces
+  function snap(p, nx, ny, W, H) {
+    var tx = [0, 960, 1920], ty = [0, 540, 1080];
+    ORDER.forEach(function (o) {
+      if (o === p) return;
+      var c = cfg(o); if (!c.show) return;
+      var w = PIECE_INFO[o].w * c.scale, h = PIECE_INFO[o].h * c.scale;
+      tx.push(c.x, c.x + w / 2, c.x + w); ty.push(c.y, c.y + h / 2, c.y + h);
+    });
+    var best = function (edges, targets) {
+      var r = { d: 0, t: null, abs: 13 };
+      edges.forEach(function (e) { targets.forEach(function (t) { var a = Math.abs(t - e); if (a < r.abs) r = { d: t - e, t: t, abs: a }; }); });
+      return r;
+    };
+    var bx = best([nx, nx + W / 2, nx + W], tx), by = best([ny, ny + H / 2, ny + H], ty);
+    return { x: nx + bx.d, y: ny + by.d, gx: bx.t, gy: by.t };
+  }
+  function guides(gx, gy) {
+    var k = scaleK();
+    $('guideV').style.display = gx === null || gx === undefined ? 'none' : 'block';
+    $('guideH').style.display = gy === null || gy === undefined ? 'none' : 'block';
+    if (gx !== null && gx !== undefined) $('guideV').style.left = (gx * k) + 'px';
+    if (gy !== null && gy !== undefined) $('guideH').style.top = (gy * k) + 'px';
+  }
+  var raf = 0;
+  function liveUpdate() { if (raf) return; raf = requestAnimationFrame(function () { raf = 0; renderScene(); pushPreview(); }); }
+  $('ov').addEventListener('pointerdown', function (e) {
+    var b = e.target.closest('.box');
+    if (!b) { if (selected) select(null); return; }
+    var p = b.getAttribute('data-k');
+    if (selected !== p) select(p);
+    var c = cfg(p);
+    drag = { k: p, mode: e.target.classList.contains('grip') ? 'size' : 'move', px: e.clientX, py: e.clientY, start: clone(c), cur: clone(c), moved: false };
+    b.setPointerCapture(e.pointerId);
+    b.focus({ preventScroll: true });
+    e.preventDefault();
+  });
+  $('ov').addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    var k = scaleK(), dx = (e.clientX - drag.px) / k, dy = (e.clientY - drag.py) / k;
+    if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 2) return;
+    drag.moved = true;
+    var info = PIECE_INFO[drag.k], st = drag.start;
+    if (drag.mode === 'size') {
+      drag.cur.scale = Math.round(Math.max(.2, Math.min(3, (info.w * st.scale + dx) / info.w)) * 100) / 100;
+      guides(null, null);
+    } else {
+      var nx = st.x + dx, ny = st.y + dy;
+      if (e.shiftKey) { drag.cur.x = Math.round(nx); drag.cur.y = Math.round(ny); guides(null, null); }
+      else {
+        var r = snap(drag.k, nx, ny, info.w * st.scale, info.h * st.scale);
+        drag.cur.x = Math.round(r.x); drag.cur.y = Math.round(r.y); guides(r.gx, r.gy);
+      }
+    }
+    liveUpdate();
+  });
+  function endDrag() {
+    if (!drag) return;
+    var d = drag; drag = null;
+    guides(null, null);
+    if (d.moved) { setCfg(d.k, d.cur); log('Moved ' + PIECE_INFO[d.k].label + ' to ' + d.cur.x + ', ' + d.cur.y + ' at ' + Math.round(d.cur.scale * 100) + '%.'); }
+    else renderScene();
+  }
+  $('ov').addEventListener('pointerup', endDrag);
+  $('ov').addEventListener('pointercancel', endDrag);
+  var nudgeTimer = null;
+  function onBoxKey(e) {
+    var p = this.getAttribute('data-k');
+    var step = e.shiftKey ? 10 : 1, dx = 0, dy = 0;
+    if (e.key === 'ArrowLeft') dx = -step; else if (e.key === 'ArrowRight') dx = step;
+    else if (e.key === 'ArrowUp') dy = -step; else if (e.key === 'ArrowDown') dy = step;
+    else if (e.key === 'Escape') { select(null); return; }
+    else return;
+    e.preventDefault();
+    var c = clone(cfg(p)); c.x += dx; c.y += dy;
+    state.layout = normLayout(state.layout); state.layout[p] = c;
+    renderScene(); pushPreview();
+    // send once the nudging stops
+    clearTimeout(nudgeTimer);
+    nudgeTimer = setTimeout(function () { changed(); }, 250);
+  }
+  $('resetLayout').onclick = function () {
+    confirmClick('resetLayout', this, 'Click again to reset every piece', function () { state.layout = {}; changed(); log('Layout reset to the default.'); });
+  };
+  window.addEventListener('resize', function () { if (state) renderScene(); });
+
+  // ------------------------------------------------------------ connection
+  var WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  var BACKOFF = [500, 1000, 2000, 3000, 5000];
+  var ws = null, wantConnected = false, connected = false, backoffIdx = 0, reconnectTimer = null;
+  var lastMsgAt = 0, connectingSince = 0, currentCode = '', gfxCount = 0, orphan = null;
+  function isHealthy() { return connected && ws && ws.readyState === 1 && Date.now() - lastMsgAt < 6000; }
+
+  function setPill(id, text, cls) { var p = $(id); p.textContent = text; p.className = 'pill' + (cls ? ' ' + cls : ''); }
+  function updatePills() {
+    if (!wantConnected && !connected) setPill('connPill', 'Not connected', '');
+    else if (isHealthy()) setPill('connPill', 'Connected', 'pill-ok');
+    else setPill('connPill', connected ? 'Connection unstable' : 'Connecting…', 'pill-warn');
+    if (!connected) setPill('gfxPill', 'Graphics: —', '');
+    else if (gfxCount > 0) setPill('gfxPill', 'Graphics: open in OBS', 'pill-ok');
+    else setPill('gfxPill', 'Graphics: not open in OBS', 'pill-warn');
+  }
+  function connect(code) {
+    currentCode = code; wantConnected = true; backoffIdx = 0;
+    $('connectMsg').textContent = '';
+    openSocket();
+  }
+  function openSocket() {
+    clearTimeout(reconnectTimer);
+    if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { /* ignore */ } }
+    connected = false;
+    var mine = new WebSocket(WS_URL);
+    ws = mine;
+    connectingSince = Date.now();
+    mine.onopen = function () {
+      lastMsgAt = Date.now();
+      mine.send(JSON.stringify({ type: 'hello', role: 'producer', code: currentCode, clientId: myId }));
+    };
+    mine.onmessage = function (e) {
+      if (mine !== ws) return;
+      lastMsgAt = Date.now();
+      var msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
+      handleMessage(msg);
+    };
+    mine.onclose = function () {
+      if (mine !== ws) return;
+      ws = null;
+      if (connected) log('Connection lost.');
+      connected = false;
+      refreshStatus();
+      scheduleReconnect(mine._retryAfter);
+    };
+    mine.onerror = function () { /* onclose handles retry */ };
+  }
+  function scheduleReconnect(delay) {
+    if (!wantConnected) return;
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(openSocket, delay || BACKOFF[Math.min(backoffIdx++, BACKOFF.length - 1)]);
+  }
+  // Another producer laptop changed the graphics: take its version (the countdown from the server's reading).
+  function adopt(b, now) {
+    var c = b.countdown;
+    state.scene = b.scene; state.headline = b.headline || ''; state.layout = b.layout || {}; state.title = b.title; state.place = b.place; state.date = b.date; state.label = b.label;
+    state.run = (b.run || []).map(function (r) { return { id: r.id, time: r.time, title: r.title }; });
+    state.nowIdx = b.nowIdx;
+    state.countdown = c ? { running: c.running, remainingMs: Math.max(0, c.remainingMs - (c.running ? Math.max(0, now - c.at) : 0)), at: Date.now() } : null;
+    saveState();
+  }
+  function handleMessage(msg) {
+    switch (msg.type) {
+      case 'ready': {
+        connected = true; backoffIdx = 0; connectingSince = 0; orphan = null;
+        var first = !evt || evt.id !== msg.event.id;
+        evt = msg.event;
+        store.set('yoyo.bcast.code', currentCode);
+        store.set('yoyo.bcast.event', JSON.stringify(evt));
+        if (first) loadState();
+        gfxCount = msg.status ? msg.status.gfx || 0 : 0;
+        serverB = msg.bcast || null;
+        serverAssetSig = msg.assets ? msg.assets.sig : null;
+        // A fresh laptop joins what the server already shows; otherwise this laptop's copy wins
+        // (it is how the graphics come back after a server restart).
+        if (serverB && !state.edited) { adopt(serverB, msg.now); log('Loaded the graphics already on the server.'); pushPreview(); }
+        else sendBcast();
+        var hasLocal = assets.logo || assets.sponsors.length;
+        if (msg.assets && !hasLocal) {
+          assets = { logo: msg.assets.logo, sponsors: msg.assets.sponsors.map(function (src, i) { return { id: uid(), name: 'Sponsor ' + (i + 1), src: src }; }), sig: msg.assets.sig };
+          saveAssets();
+        } else if (hasLocal && assetsPending()) sendAssets();
+        showApp();
+        log('Connected to "' + evt.name + '".');
+        break;
+      }
+      case 'bcast': {
+        serverB = msg.bcast;
+        if (msg.bcast && msg.bcast.from !== myId) { adopt(msg.bcast, msg.now); log('The graphics were changed from another laptop.'); pushPreview(); }
+        renderAll();
+        break;
+      }
+      case 'assets': {
+        serverAssetSig = msg.assets ? msg.assets.sig : null;
+        if (msg.assets && msg.assets.sig !== assets.sig) {
+          assets = { logo: msg.assets.logo, sponsors: msg.assets.sponsors.map(function (src, i) { return { id: uid(), name: 'Sponsor ' + (i + 1), src: src }; }), sig: msg.assets.sig };
+          saveAssets();
+          log('The logos were changed from another laptop.');
+        }
+        renderAssets();
+        break;
+      }
+      case 'status':
+        if (typeof msg.gfx === 'number') gfxCount = msg.gfx;
+        break;
+      case 'error':
+        log('Server: ' + msg.message);
+        if (msg.code === 'too_large') { notice('warn', msg.message); break; }
+        if (msg.fatal && evt) {
+          orphan = msg.message;
+          connected = false;
+          if (ws) ws._retryAfter = 120000;
+        } else if (msg.fatal) {
+          wantConnected = false;
+          store.remove('yoyo.bcast.code');
+          disconnect(false);
+          $('connectMsg').textContent = msg.message;
+        } else if (ws) {
+          ws._retryAfter = 30000;
+          $('connectMsg').textContent = msg.message;
+        }
+        break;
+      default: break;
+    }
+    refreshStatus();
+  }
+  function disconnect(forget) {
+    wantConnected = false; connected = false; orphan = null;
+    clearTimeout(reconnectTimer);
+    if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { /* ignore */ } ws = null; }
+    if (forget) { store.remove('yoyo.bcast.code'); store.remove('yoyo.bcast.event'); }
+    $('app').classList.add('hidden');
+    $('eventHead').classList.add('hidden');
+    $('pageNav').classList.add('hidden');
+    $('connectPanel').classList.remove('hidden');
+    $('pvFrame').setAttribute('src', 'about:blank');
+    refreshStatus();
+  }
+  setInterval(function () {
+    if (!ws) return;
+    var now = Date.now();
+    if (ws.readyState === 1 && now - lastMsgAt > 8000) { log('No data from server for 8s, reconnecting.'); ws.close(); }
+    else if (ws.readyState === 0 && connectingSince && now - connectingSince > 10000) ws.close();
+  }, 2000);
+  window.addEventListener('online', function () { if (wantConnected && !connected) { backoffIdx = 0; openSocket(); } });
+  // Catch up after an outage: whatever the server is missing goes as soon as it is reachable.
+  var wasHealthy = false;
+  setInterval(function () {
+    var h = isHealthy();
+    if (h && !wasHealthy && state) { if (pending()) sendBcast(); if (assetsPending() && (assets.logo || assets.sponsors.length)) sendAssets(); }
+    wasHealthy = h;
+    refreshStatus();
+  }, 1000);
+
+  function showApp() {
+    $('connectPanel').classList.add('hidden');
+    $('app').classList.remove('hidden');
+    if (evt) {
+      $('eventHead').classList.remove('hidden');
+      $('eventName').textContent = evt.name;
+      var c = encodeURIComponent(currentCode);
+      $('navHome').href = '/?code=' + c;
+      $('navScore').href = '/score?code=' + c;
+      $('navMusic').href = '/music?code=' + c;
+      $('navBroadcast').href = '/broadcast?code=' + c;
+      $('navTimer').classList.toggle('hidden', !evt.viewKey);
+      if (evt.viewKey) $('navTimer').href = '/timer/' + encodeURIComponent(evt.viewKey);
+      $('pageNav').classList.remove('hidden');
+    }
+    renderLink();
+    renderAll();
+  }
+
+  // ------------------------------------------------------------ banners
+  var notices = [];
+  var toastTimer = null;
+  function notice(kind, text) {
+    if (kind === 'info') {
+      var t = $('toast');
+      t.textContent = text;
+      t.classList.remove('gone');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { t.classList.add('gone'); }, 6000);
+      return;
+    }
+    notices.push({ kind: kind, text: text, until: Date.now() + 10000 });
+    refreshStatus();
+  }
+  var bannerSig = '';
+  function refreshStatus() {
+    updatePills();
+    if (state) renderAir();
+    var items = [];
+    if (orphan) {
+      items.push(['err', 'The server no longer accepts this event (' + orphan.replace(/\.$/, '') + '). The graphics hold what they last showed, but can’t change. Ask the operator for a new code.']);
+    } else if (wantConnected && !isHealthy() && evt) {
+      items.push(['offline', 'Offline. Changes are saved on this laptop and go to the graphics when the connection returns; the graphics keep showing the last update, and the countdown keeps running.']);
+    }
+    notices = notices.filter(function (n) { return Date.now() < n.until; });
+    notices.forEach(function (n) { items.push([n.kind, n.text]); });
+    var s = JSON.stringify(items);
+    if (s === bannerSig) return;
+    bannerSig = s;
+    var b = $('banners');
+    b.textContent = '';
+    items.forEach(function (it) { b.appendChild(el('div', { class: 'banner ' + it[0], text: it[1] })); });
+  }
+
+  // ------------------------------------------------------------ start
+  $('connectBtn').onclick = function () {
+    var code = $('codeInput').value.trim();
+    if (!code) { $('connectMsg').textContent = 'Enter the event code.'; return; }
+    connect(code);
+  };
+  $('codeInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('connectBtn').click(); });
+  $('disconnectBtn').onclick = function () {
+    confirmClick('disconnect', this, 'Click again to disconnect', function () { disconnect(true); });
+  };
+  try {
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/score-sw.js', { scope: '/broadcast' }).catch(function () { /* optional */ });
+  } catch (e) { /* optional */ }
+
+  var startCode = new URLSearchParams(location.search).get('code') || store.get('yoyo.bcast.code') || '';
+  if (startCode) {
+    $('codeInput').value = startCode;
+    // Works without the server: the run of show and logos are all on this laptop.
+    try { evt = JSON.parse(store.get('yoyo.bcast.event') || 'null'); } catch (e) { evt = null; }
+    if (evt) { loadState(); currentCode = startCode; showApp(); }
+    connect(startCode);
+  }
+  refreshStatus();
+})();
+</script>
+</body>
+</html>

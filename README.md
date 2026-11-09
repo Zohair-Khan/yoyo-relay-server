@@ -7,10 +7,13 @@ Judges' laptop (Chrome + controllers)  --wss-->  This server  --wss-->  Stream c
         /score                                   (Render)                       /overlay/<key>
                                                     ^
 Music laptop (music, name, timer)          --wss----+------->  Timer display (stage / judges screen)
-        /music                                                       /timer/<key>
+        /music                                   |                   /timer/<key>
+                                                    |
+Producer laptop (run of show, logos)       --wss----+------->  Stream computer (OBS Browser Source)
+        /broadcast                                                   /gfx/<key>  (Starting Soon)
 ```
 
-Clients start at the event page (`/`): they enter the event code once and pick Judging, Music or Timer display. Every page also links to the others in its header.
+Clients start at the event page (`/`): they enter the event code once and pick Judging, Music, Broadcast or Timer display. Every page also links to the others in its header.
 
 You manage events from `/admin` (password protected). Each event gets its own scoring code and its own private overlay link.
 
@@ -19,11 +22,14 @@ You manage events from `/admin` (password protected). Each event gets its own sc
 | File | Purpose |
 |---|---|
 | `server.js` | Web server, WebSocket server, event storage, admin API |
-| `index.html` | Event page: enter the code once, pick Judging, Music or Timer display |
+| `index.html` | Event page: enter the code once, pick Judging, Music, Broadcast or Timer display |
 | `score.html` | Scoring page for the judges' laptop |
 | `music.html` | Music page: divisions, running orders, competitor music, the name on the overlay and the performance timer |
 | `timer.html` | Big performance timer for a screen the judges, the competitor or the audience can see |
-| `score-sw.js` | Keeps the scoring and music pages loadable in the browser while the server is down |
+| `broadcast.html` | Broadcast page for the producer: run of show, countdown, client logo and sponsors, which graphic is on air |
+| `gfx.html` | Broadcast graphics for OBS (Starting Soon pieces: logo, headline, countdown, run of show, event bar, sponsors), driven by the Broadcast page |
+| `fonts/` | Saira, the graphics typeface (SIL Open Font License), served by this server |
+| `score-sw.js` | Keeps the scoring, music and Broadcast pages loadable in the browser while the server is down |
 | `cues/` | Default start and end cues (`startnoise.mp3`, `endnoise.mp3`) for the music page |
 | `overlay.html` | Overlay page for the OBS Browser Source |
 | `admin.html` | Your event management page |
@@ -110,6 +116,17 @@ Music files stay on that laptop (saved in the browser), so set up the divisions 
 2. Press **Full screen**. The page keeps the screen awake and shows the timer and who's performing; the last 10 seconds of a countdown turn amber, and zero turns red.
 
 Add `?name=0` to the timer display link to show only the time.
+
+**Broadcast graphics (the producer, on their own laptop):**
+1. Open the event page link and choose **Broadcast**.
+2. Check the headline, event name, place and date, choose the client's logo (a PNG or SVG with a transparent background) and add the sponsor logos. They are shrunk and saved on this laptop; the server only holds a copy in memory.
+3. Type the run of show (one segment per line, time first: `11:15 1A Pro prelims`).
+4. Lay out the **Scene**: drag each piece (logo, headline, countdown, run of show, event bar, sponsors) where your background leaves room, and drag its corner to resize. Pick a piece to hide it or change its font and colours.
+5. Under **Links for OBS**, copy the **Full scene** link and add it as a Browser Source at 1920 × 1080, above the background, camera and break-video sources. The graphics are always transparent: set up the background in OBS (for a slow endless scroll, add the image as an Image source and give it OBS's Scroll filter). For a DIY setup, use **One source per piece** instead: each piece has its own link and size, and you place it in OBS.
+6. Set the countdown (minutes, or **Count to** the next segment's time), press **Start**, then **Take Starting Soon to air**. **Clear graphics** takes it off; the source is then clear.
+7. During the day, **Next segment** moves NOW and NEXT on the graphics.
+
+If the connection drops, the graphics keep showing the last update and the countdown keeps running. After a server restart the Broadcast page sends everything again by itself.
 
 If the connection drops or the server crashes, judges keep scoring: every press still counts and buzzes normally, the numbers are saved on the laptop (even through a page reload), and an amber banner says the stream overlay is paused. When the connection returns, the laptop sends its totals and the overlay catches up. If the server no longer knows the event when it comes back (for example the free tier lost it on a restart), a red banner says so and judges keep scoring locally; take the final scores from their screens by hand.
 

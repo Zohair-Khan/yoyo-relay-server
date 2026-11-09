@@ -10,6 +10,9 @@
  *   /overlay/KEY   stream overlay (OBS Browser Source)
  *   /timer/KEY     big performance timer for a screen judges or the audience can see
  *   /overlay/KEY?replay=1   replay overlay: plays back a recorded routine's clicks (for post)
+ *   /broadcast     Broadcast page (producer: run of show, countdown, logos, which graphic is on air)
+ *   /gfx/KEY       broadcast graphics (OBS Browser Source, transparent): the full Starting Soon scene,
+ *                  or one piece with ?piece=logo|headline|countdown|runofshow|eventbar|sponsors
  *   /admin         event management page (password-protected API)
  *   /ws            WebSocket endpoint used by all the pages
  *   /health        plain "ok" for uptime monitors
@@ -51,6 +54,10 @@ const MAX_SCORERS_PER_EVENT = 4; // minimum; the real cap is max(this, judges + 
 const CLAIM_GRACE_MS = 20000;    // a dropped laptop keeps its judge slots this long
 const MAX_VIEWERS_PER_EVENT = 10;
 const MAX_MUSIC_PER_EVENT = 3;
+const MAX_PRODUCERS_PER_EVENT = 3;
+const MAX_LOGO_CHARS = 600 * 1024;    // client logo as a data URL, held in memory only
+const MAX_SPONSOR_CHARS = 200 * 1024; // each sponsor logo
+const MAX_ASSET_CHARS = 950 * 1024;   // all logos together (must fit one WebSocket message)
 const MAX_SCORE = 999;
 const TICK_MS = 3000;   // app-level heartbeat so browsers can detect dead connections
 const PING_MS = 15000;  // protocol-level ping so the server can drop dead sockets
@@ -58,7 +65,7 @@ const FAIL_WINDOW_MS = 10 * 60 * 1000;
 const MAX_FAILS = { admin: 10, ws: 30 }; // ws is higher: a whole venue shares one public IP
 const BLOCK_MS = 10 * 60 * 1000;
 
-const PAGES = { '/score': 'score.html', '/music': 'music.html', '/admin': 'admin.html' };
+const PAGES = { '/score': 'score.html', '/music': 'music.html', '/broadcast': 'broadcast.html', '/admin': 'admin.html' };
 const SEC_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer', // overlay URLs contain a key; never leak it via Referer
@@ -159,8 +166,9 @@ function blankState(n) {
 function getRuntime(ev) {
   let rt = runtimes.get(ev.id);
   if (!rt) {
+    // bcast / bcastAssets: what the Broadcast page last sent (memory only; the producer's laptop re-sends after a restart).
     rt = { state: blankState(ev.judges), scorers: new Set(), viewers: new Set(), music: new Set(), displays: new Set(), replays: new Set(),
-      claims: new Map(), recording: null, replay: null };
+      producers: new Set(), gfx: new Set(), claims: new Map(), recording: null, replay: null, bcast: null, bcastAssets: null };
     runtimes.set(ev.id, rt);
     syncEventState(rt, ev);
   }
@@ -207,6 +215,71 @@ function cleanOverlay(o) {
   };
 }
 
+// Broadcast graphics, set from the Broadcast page. Countdown is stamped with server time like the timer.
+const SCENES = ['off', 'starting'];
+// Graphics pieces and how the producer laid them out (position on the 1920x1080 scene, size, font, colours).
+const GFX_PIECES = ['logo', 'headline', 'countdown', 'runofshow', 'eventbar', 'sponsors'];
+function cleanLayout(l) {
+  if (!l || typeof l !== 'object') return null;
+  const hex = (v) => (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : '');
+  const num = (v, lo, hi, d) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
+  const out = {};
+  GFX_PIECES.forEach((k) => {
+    const p = l[k];
+    if (!p || typeof p !== 'object') return;
+    const c = p.colors && typeof p.colors === 'object' ? p.colors : {};
+    out[k] = {
+      x: Math.round(num(p.x, -1920, 3840, 0)),
+      y: Math.round(num(p.y, -1080, 2160, 0)),
+      scale: Math.round(num(p.scale, 0.2, 3, 1) * 100) / 100,
+      show: p.show !== false,
+      font: typeof p.font === 'string' && /^[A-Za-z0-9 ]{1,40}$/.test(p.font.trim()) ? p.font.trim() : '',
+      colors: { panel: hex(c.panel), accent: hex(c.accent), text: hex(c.text) },
+      z: Math.round(num(p.z, -20, 20, 0)),
+      plate: p.plate !== false,
+    };
+  });
+  return out;
+}
+function cleanBcast(b, from) {
+  if (!b || typeof b !== 'object') return null;
+  const run = (Array.isArray(b.run) ? b.run : []).slice(0, 40).map((r) => ({
+    id: /^[A-Za-z0-9_-]{1,24}$/.test(r && r.id) ? r.id : crypto.randomBytes(4).toString('hex'),
+    time: cleanText(r && r.time, 8),
+    title: cleanText(r && r.title, 60),
+  }));
+  const nowIdx = Number.isInteger(b.nowIdx) && b.nowIdx >= 0 && b.nowIdx < run.length ? b.nowIdx : -1;
+  let countdown = null;
+  if (b.countdown && typeof b.countdown === 'object' && Number.isFinite(b.countdown.remainingMs)) {
+    countdown = {
+      running: !!b.countdown.running,
+      remainingMs: Math.max(0, Math.min(Math.round(b.countdown.remainingMs), 24 * 3600000)),
+      at: Date.now(),
+    };
+  }
+  return {
+    scene: SCENES.indexOf(b.scene) >= 0 ? b.scene : 'off',
+    headline: cleanText(b.headline, 40),
+    layout: cleanLayout(b.layout),
+    title: cleanText(b.title, 80),
+    place: cleanText(b.place, 80),
+    date: cleanText(b.date, 40),
+    label: cleanText(b.label, 40),
+    run, nowIdx, countdown,
+    from: from || '',
+  };
+}
+const IMAGE_URL = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+function cleanAssets(a) {
+  if (!a || typeof a !== 'object') return null;
+  const logo = typeof a.logo === 'string' && a.logo.length <= MAX_LOGO_CHARS && IMAGE_URL.test(a.logo) ? a.logo : null;
+  const sponsors = (Array.isArray(a.sponsors) ? a.sponsors : []).slice(0, 12)
+    .filter((s) => typeof s === 'string' && s.length <= MAX_SPONSOR_CHARS && IMAGE_URL.test(s));
+  const total = (logo ? logo.length : 0) + sponsors.reduce((n, s) => n + s.length, 0);
+  if (total > MAX_ASSET_CHARS) return null;
+  return { logo, sponsors, sig: cleanText(a.sig, 64) };
+}
+
 function adminView(ev) {
   const rt = runtimes.get(ev.id);
   return {
@@ -225,6 +298,8 @@ function adminView(ev) {
       music: rt ? rt.music.size : 0,
       displays: rt ? rt.displays.size : 0,
       replays: rt ? rt.replays.size : 0,
+      producers: rt ? rt.producers.size : 0,
+      gfx: rt ? gfxOnAir(rt) : 0,
       recordings: (recordings[ev.id] || []).length,
       claimed: rt ? [...rt.claims.keys()].sort((a, b) => a - b) : [],
       state: rt ? rt.state : blankState(ev.judges),
@@ -237,11 +312,22 @@ function clearClaims(rt) {
   rt.claims.clear();
 }
 
+function allSockets(rt) {
+  return [...rt.scorers, ...rt.viewers, ...rt.music, ...rt.displays, ...rt.replays, ...rt.producers, ...rt.gfx];
+}
+
+// Graphics sources in OBS (the Broadcast page's own preview doesn't count).
+function gfxOnAir(rt) {
+  let n = 0;
+  rt.gfx.forEach((w) => { if (!w.ctx.preview) n++; });
+  return n;
+}
+
 function kickEvent(ev, message) {
   const rt = runtimes.get(ev.id);
   if (!rt) return;
   clearClaims(rt);
-  for (const w of [...rt.scorers, ...rt.viewers, ...rt.music, ...rt.displays, ...rt.replays]) {
+  for (const w of allSockets(rt)) {
     sendJson(w, { type: 'error', code: 'revoked', message, fatal: true });
     try { w.close(4003, 'event closed'); } catch (e) { /* ignore */ }
   }
@@ -455,16 +541,20 @@ function readyFor(ev, rt, ws) {
   const role = ws.ctx ? ws.ctx.role : '';
   const event = { id: ev.id, name: ev.name, judges: ev.judges, expiresAt: ev.expiresAt };
   // Code holders (judges, music) get the view key so they can open the timer display.
-  if (role === 'scorer' || role === 'music') event.viewKey = ev.viewKey;
+  if (role === 'scorer' || role === 'music' || role === 'producer') event.viewKey = ev.viewKey;
   const msg = { type: 'ready', epoch: EPOCH, event, status: statusFor(rt, ws), state: rt.state, now: Date.now() };
   if (role === 'replay' && rt.replay) msg.replay = rt.replay;
   if (role === 'music') { msg.status.replays = rt.replays.size; msg.recordings = (recordings[ev.id] || []).map(publicRecording); }
+  if (role === 'producer' || role === 'gfx') { msg.bcast = rt.bcast; msg.assets = rt.bcastAssets; }
+  if (role === 'producer') msg.status.gfx = gfxOnAir(rt);
   return msg;
 }
 
 function broadcastStatus(rt) {
   rt.scorers.forEach((w) => sendJson(w, Object.assign({ type: 'status' }, statusFor(rt, w))));
   rt.music.forEach((w) => sendJson(w, { type: 'status', viewers: rt.viewers.size, replays: rt.replays.size }));
+  const g = gfxOnAir(rt);
+  rt.producers.forEach((w) => sendJson(w, { type: 'status', gfx: g }));
 }
 
 // ---------------------------------------------------------------- HTTP part
@@ -478,10 +568,10 @@ function json(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
-function sendPage(res, file) {
+function sendPage(res, file, extra) {
   fs.readFile(path.join(__dirname, file), (err, buf) => {
     if (err) return text(res, 500, 'Page missing on server: ' + file);
-    res.writeHead(200, Object.assign({ 'Content-Type': 'text/html; charset=utf-8' }, SEC_HEADERS));
+    res.writeHead(200, Object.assign({ 'Content-Type': 'text/html; charset=utf-8' }, SEC_HEADERS, extra || {}));
     res.end(buf);
   });
 }
@@ -605,7 +695,7 @@ async function handleApi(req, res, url) {
         if (j > judges) { clearTimeout(c.timer); rt.claims.delete(j); }
       }
       // Re-send "ready" so scoring pages rebuild their judge cards and overlays re-render.
-      for (const w of [...rt.scorers, ...rt.viewers, ...rt.music, ...rt.displays, ...rt.replays]) {
+      for (const w of allSockets(rt)) {
         sendJson(w, readyFor(ev, rt, w));
       }
     }
@@ -711,6 +801,14 @@ const server = http.createServer((req, res) => {
       res.end(buf);
     });
   }
+  if (p === '/fonts/saira-latin.woff2') {
+    // Broadcast graphics typeface (Saira, SIL Open Font License), served here so OBS never waits on a font CDN.
+    return fs.readFile(path.join(__dirname, p), (err, buf) => {
+      if (err) return text(res, 404, 'Not found');
+      res.writeHead(200, Object.assign({}, SEC_HEADERS, { 'Content-Type': 'font/woff2', 'Cache-Control': 'public, max-age=604800' }));
+      res.end(buf);
+    });
+  }
   if (p === '/score-sw.js') {
     // Lets the scoring and music pages reload while this server is down (see score-sw.js).
     return fs.readFile(path.join(__dirname, 'score-sw.js'), (err, buf) => {
@@ -720,6 +818,8 @@ const server = http.createServer((req, res) => {
     });
   }
   if (p === '/overlay' || p.startsWith('/overlay/')) return sendPage(res, 'overlay.html');
+  // The Broadcast page shows the graphics in a preview frame, so allow framing by this site only.
+  if (p === '/gfx' || p.startsWith('/gfx/')) return sendPage(res, 'gfx.html', { 'X-Frame-Options': 'SAMEORIGIN' });
   return text(res, 404, 'Not found');
 });
 
@@ -744,7 +844,7 @@ function fail(ws, code, message, closeCode, fatal) {
 
 function setFor(rt, role) {
   return role === 'scorer' ? rt.scorers : role === 'music' ? rt.music : role === 'display' ? rt.displays
-    : role === 'replay' ? rt.replays : rt.viewers;
+    : role === 'replay' ? rt.replays : role === 'producer' ? rt.producers : role === 'gfx' ? rt.gfx : rt.viewers;
 }
 
 function handleHello(ws, msg) {
@@ -752,16 +852,18 @@ function handleHello(ws, msg) {
     return fail(ws, 'rate_limited', 'Too many failed attempts. Try again in a few minutes.', 4029, false);
   }
   let ev = null;
-  // The music page uses the event's scoring code but can only set the overlay name.
-  if (msg.role === 'scorer' || msg.role === 'music') ev = byCode.get(norm(msg.code));
-  else if (msg.role === 'viewer' || msg.role === 'display' || msg.role === 'replay') ev = byKey.get(typeof msg.key === 'string' ? msg.key : '');
+  // The music and Broadcast pages use the event's scoring code but can't score.
+  const byCodeRole = msg.role === 'scorer' || msg.role === 'music' || msg.role === 'producer';
+  if (byCodeRole) ev = byCode.get(norm(msg.code));
+  else if (msg.role === 'viewer' || msg.role === 'display' || msg.role === 'replay' || msg.role === 'gfx') ev = byKey.get(typeof msg.key === 'string' ? msg.key : '');
   else return fail(ws, 'bad_request', 'Unknown role.', 4000, true);
 
   if (!ev) {
     recordFailure(ws.ip, 'ws');
     return fail(ws, 'bad_code',
-      msg.role === 'scorer' || msg.role === 'music' ? 'That code was not recognized.'
-        : msg.role === 'display' ? 'This timer display link is not valid.' : 'This overlay link is not valid.', 4003, true);
+      byCodeRole ? 'That code was not recognized.'
+        : msg.role === 'display' ? 'This timer display link is not valid.'
+          : msg.role === 'gfx' ? 'This graphics link is not valid.' : 'This overlay link is not valid.', 4003, true);
   }
   const status = eventStatus(ev);
   if (status === 'revoked') return fail(ws, 'revoked', 'This event has been disabled.', 4003, true);
@@ -770,12 +872,12 @@ function handleHello(ws, msg) {
   const rt = getRuntime(ev);
   const set = setFor(rt, msg.role);
   const cap = msg.role === 'scorer' ? Math.max(MAX_SCORERS_PER_EVENT, ev.judges + 2)
-    : msg.role === 'music' ? MAX_MUSIC_PER_EVENT : MAX_VIEWERS_PER_EVENT;
+    : msg.role === 'music' ? MAX_MUSIC_PER_EVENT : msg.role === 'producer' ? MAX_PRODUCERS_PER_EVENT : MAX_VIEWERS_PER_EVENT;
   if (set.size >= cap) return fail(ws, 'full', 'Too many connections for this event. Retrying…', 4009, false);
 
   const clientId = (typeof msg.clientId === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(msg.clientId))
     ? msg.clientId : crypto.randomBytes(8).toString('hex');
-  ws.ctx = { ev, rt, role: msg.role, clientId };
+  ws.ctx = { ev, rt, role: msg.role, clientId, preview: msg.role === 'gfx' && msg.preview === true };
   set.add(ws);
   if (msg.role === 'scorer') {
     // A returning device picks its judge slots back up.
@@ -816,6 +918,24 @@ function handleMessage(ws, msg) {
       const out = JSON.stringify({ type: 'replay', replay: rt.replay, now: Date.now() });
       rt.replays.forEach((w) => sendSafe(w, out));
       rt.music.forEach((w) => sendSafe(w, out));
+    }
+    return;
+  }
+  if (role === 'producer') {
+    if (msg.type === 'bcast') {
+      const b = cleanBcast(msg.b, ws.ctx.clientId);
+      if (!b) return;
+      rt.bcast = b;
+      const out = JSON.stringify({ type: 'bcast', bcast: b, now: Date.now() });
+      rt.gfx.forEach((w) => sendSafe(w, out));
+      rt.producers.forEach((w) => sendSafe(w, out));
+    } else if (msg.type === 'assets') {
+      const a = cleanAssets(msg.assets);
+      if (!a) { sendJson(ws, { type: 'error', code: 'too_large', message: 'Those logos are too large to send. Remove a sponsor logo or use a smaller file.', fatal: false }); return; }
+      rt.bcastAssets = a;
+      const out = JSON.stringify({ type: 'assets', assets: a, now: Date.now() });
+      rt.gfx.forEach((w) => sendSafe(w, out));
+      rt.producers.forEach((w) => sendSafe(w, out));
     }
     return;
   }

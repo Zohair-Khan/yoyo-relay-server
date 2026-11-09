@@ -8,3 +8,6 @@ package-lock.json
 data/
 
 .impeccable/
+
+# Local environment variables
+env.ps1
